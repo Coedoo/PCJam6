@@ -1,0 +1,13 @@
+build
+build_web
+local
+
+*.dll
+*.exe
+*.exp
+*.lib
+*.pdb
+*.raddbgi
+
+*.sublime-workspace
+*.sublime-project
