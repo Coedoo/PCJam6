@@ -230,45 +230,6 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
             }
 
             tile.pipeDir = nil
-
-            // for handleA in connectedBuildings {
-            //     buildingA := dm.GetElementPtr(gameState.spawnedBuildings, handleA) or_continue
-
-            //     #reverse for handleB, i in buildingA.energyTargets {
-            //         buildingB := dm.GetElementPtr(gameState.spawnedBuildings, handleB) or_continue
-
-            //         key := PathKey{buildingA.handle, buildingB.handle}
-            //         oldPath := gameState.pathsBetweenBuildings[key] or_continue
-            //         newPath := CalculatePath(buildingA.gridPos, buildingB.gridPos, PipePredicate)
-
-            //         if PathsEqual(oldPath, newPath) {
-            //             continue
-            //         }
-
-            //         delete(oldPath)
-
-            //         if newPath != nil {
-            //             gameState.pathsBetweenBuildings[key] = newPath
-            //         }
-            //         else {
-            //             delete_key(&gameState.pathsBetweenBuildings, key)
-
-            //             unordered_remove(&buildingA.energyTargets, i)
-
-            //             if idx, found := slice.linear_search(buildingB.energySources[:], handleA); found {
-            //                 unordered_remove(&buildingB.energySources, idx)
-            //             }
-            //         }
-
-            //         // Delete packets on old path
-            //         it := dm.MakePoolIterReverse(&gameState.energyPackets)
-            //         for packet in dm.PoolIterate(&it) {
-            //             if packet.pathKey == key {
-            //                 dm.FreeSlot(&gameState.energyPackets, packet.handle)
-            //             }
-            //         }
-            //     }
-            // }
         }
     }
 
@@ -344,6 +305,7 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
             building := Buildings[idx]
 
             pos := MousePosGrid()
+            pos -= building.size / 2
 
             if IsInDistance(gameState.playerPosition, pos) {
                 if CanBePlaced(building, pos) {
@@ -527,30 +489,25 @@ GameRender : dm.GameRender : proc(state: rawptr) {
     }
     // dm.PopShader()
 
-    // Selected building
+    // Placing building
     if gameState.buildUpMode == .Building {
-        gridPos := MousePosGrid()
-
         building := Buildings[gameState.selectedBuildingIdx]
+        gridPos := MousePosGrid()
+        gridPos -= building.size / 2
+
 
         // @TODO @CACHE
         tex := dm.GetTextureAsset(building.spriteName)
         sprite := dm.CreateSprite(tex, building.spriteRect)
 
         color := dm.GREEN
-        if CanBePlaced(building, gridPos) == false {
+        if CanBePlaced(building, gridPos) == false ||
+            IsInDistance(gameState.playerPosition, gridPos) == false
+        {
             color = dm.RED
         }
 
-        // @TODO: make this a function
-        pos := MousePosGrid()
-        playerPos := WorldPosToCoord(gameState.playerPosition)
-
-        delta := pos - playerPos
-
-        if delta.x * delta.x + delta.y * delta.y > BUILDING_DISTANCE * BUILDING_DISTANCE {
-            color = dm.RED
-        }
+        sprite.scale = f32(building.size.x)
 
         dm.DrawSprite(
             sprite, 
@@ -605,7 +562,8 @@ GameRender : dm.GameRender : proc(state: rawptr) {
 
                     color: dm.color
                     switch gameState.buildUpMode {
-                    case .Building: 
+                    case .Building:
+                        coord := coord - building.size / 2
                         color = (CanBePlaced(building, coord) ?
                                            {0, 1, 0, 0.2} :
                                            {1, 0, 0, 0.2})
