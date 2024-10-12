@@ -53,7 +53,7 @@ Buildings := [?]Building {
         size = {3, 3},
 
         maxStorage = 20,
-        producedItem= .None,
+        producedItem= .Candy,
         productionRate = 10,
 
         cost = 100,
@@ -62,6 +62,27 @@ Buildings := [?]Building {
         
         inputs = {
             {{0, 1}, {.East, .West}}
+        }
+    },
+
+    {
+        name = "Factory 3",
+        spriteName = "buildings.png",
+        spriteRect = {32, 0, 32, 32},
+
+        size = {3, 3},
+
+        maxStorage = 20,
+        producedItem= .Candy,
+        productionRate = 10,
+
+        cost = 100,
+
+        output = {{2, 1}, {.West, .East}},
+        
+        inputs = {
+            {{0, 0}, {.East, .West}},
+            {{0, 2}, {.East, .West}},
         }
     },
 }

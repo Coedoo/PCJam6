@@ -189,14 +189,21 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
         buildingData := &Buildings[building.dataIdx]
 
         if buildingData.producedItem != .None {
-            if building.productionTimer <= 0 {
-                if building.currentItemsCount < buildingData.maxStorage {
+            if building.isProducing {
+                building.productionTimer += f32(dm.time.deltaTime)
+                
+                productionTime := PRODUCTION_BASE / f32(buildingData.productionRate)
+                if building.productionTimer >= productionTime {
+                    building.productionTimer = 0
                     building.currentItemsCount += 1
-                    building.productionTimer = PRODUCTION_BASE / f32(buildingData.productionRate)
+                    building.isProducing = false
                 }
             }
-            else {
-                building.productionTimer -= f32(dm.time.deltaTime)
+
+            if building.isProducing == false &&
+                RemoveItemsForItemSpawn(building, buildingData.producedItem)
+            {
+                building.isProducing = true
             }
         }
 
@@ -331,6 +338,15 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
             dirSet := NextDir if dm.input.scroll < 0 else PrevDir
             gameState.buildingBeltDir.from = dirSet[gameState.buildingBeltDir.from]
             gameState.buildingBeltDir.to = dirSet[gameState.buildingBeltDir.to]
+        }
+
+        if dm.GetMouseButton(.Middle) == .JustPressed {
+            newDir := BeltDir {
+                from = gameState.buildingBeltDir.to,
+                to   = gameState.buildingBeltDir.from,
+            }
+
+            gameState.buildingBeltDir = newDir
         }
     }
 

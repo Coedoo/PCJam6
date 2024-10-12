@@ -49,6 +49,7 @@ BuildingInstance :: struct {
     gridPos: iv2,
     position: v2,
 
+    isProducing: bool,
     currentItemsCount: int,
     productionTimer: f32,
 
