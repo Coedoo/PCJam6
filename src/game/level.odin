@@ -20,20 +20,20 @@ Tile :: struct {
 
     building: BuildingHandle,
 
-    pipeDir: DirectionSet,
+    beltDir: BeltDir,
+
+    nextTile: Maybe(iv2),
 
     type: TileType,
 
-    isCorner: bool,
-    visibleWaypoints: []iv2,
-
-    activeInConnectionTest: bool,
+    isInput: bool,
+    inputIndex: int,
 }
 
 TileStartingValues :: struct {
     hasBuilding: bool,
     buildingIdx: int,
-    pipeDir: DirectionSet,
+    beltDir: Direction,
 }
 
 Level  :: struct {
@@ -187,36 +187,36 @@ LoadLevels :: proc() -> (levels: []Level) {
                     continue
                 }
 
-                tileset := FindTilesetDefinition(project, tilesetID)
-                tileIDToDir := make(map[int]DirectionSet)
-                for enumTag in tileset.enum_tags {
-                    dir: DirectionSet
-                    switch enumTag.enum_value_id {
-                    case "NS": dir = { .North, .South }
-                    case "WE": dir = { .West, .East }
-                    case "NE": dir = { .North, .East }
-                    case "NW": dir = { .North, .West }
-                    case "SE": dir = { .South, .East }
-                    case "SW": dir = { .South, .West }
-                    case "NWE": dir = { .North, .West, .East }
-                    case "SWE": dir = { .South, .West, .East }
-                    case "NWS": dir = { .North, .West, .South }
-                    case "NES": dir = { .North, .East, .South }
-                    case "NWSE": dir = { .North, .West, .South, .East }
-                    }
+                // tileset := FindTilesetDefinition(project, tilesetID)
+                // tileIDToDir := make(map[int]DirectionSet)
+                // for enumTag in tileset.enum_tags {
+                //     dir: DirectionSet
+                //     switch enumTag.enum_value_id {
+                //     case "NS": dir = { .North, .South }
+                //     case "WE": dir = { .West, .East }
+                //     case "NE": dir = { .North, .East }
+                //     case "NW": dir = { .North, .West }
+                //     case "SE": dir = { .South, .East }
+                //     case "SW": dir = { .South, .West }
+                //     case "NWE": dir = { .North, .West, .East }
+                //     case "SWE": dir = { .South, .West, .East }
+                //     case "NWS": dir = { .North, .West, .South }
+                //     case "NES": dir = { .North, .East, .South }
+                //     case "NWSE": dir = { .North, .West, .South, .East }
+                //     }
 
-                    for id in enumTag.tile_ids {
-                        tileIDToDir[id] = dir
-                    }
-                }
+                //     for id in enumTag.tile_ids {
+                //         tileIDToDir[id] = dir
+                //     }
+                // }
 
-                for tile, i in layer.grid_tiles {
-                    coord := tile.px / layer.grid_size
-                    // reverse the axis because LDTK Y axis goes down
-                    coord.y = int(level.sizeY) - coord.y - 1
-                    idx := coord.y * int(level.sizeX) + coord.x
-                    level.startingState[idx].pipeDir = tileIDToDir[tile.t]
-                }
+                // for tile, i in layer.grid_tiles {
+                //     coord := tile.px / layer.grid_size
+                //     // reverse the axis because LDTK Y axis goes down
+                //     coord.y = int(level.sizeY) - coord.y - 1
+                //     idx := coord.y * int(level.sizeX) + coord.x
+                //     level.startingState[idx].beltDir = tileIDToDir[tile.t]
+                // }
             }
             else {
                 fmt.eprintln("Unhandled level layer:", layer.identifier)
@@ -237,6 +237,7 @@ OpenLevel :: proc(name: string) {
     context.allocator = gameState.levelAllocator
 
     dm.InitResourcePool(&gameState.spawnedBuildings, 128)
+    dm.InitResourcePool(&gameState.spawnedItems, 512)
 
     pathMem := make([]byte, PATH_MEMORY)
     // mem.arena_init(&gameState.pathArena, pathMem)
@@ -257,14 +258,6 @@ OpenLevel :: proc(name: string) {
 
     gameState.playerPosition = dm.ToV2(iv2{gameState.level.sizeX, gameState.level.sizeY}) / 2
 
-    // @NOTE: I'm doing this in two passes so TryPlaceBuilding already have
-    // pipes to create paths between buildings
-    for &tile, i in gameState.level.grid {
-        if gameState.level.startingState[i].pipeDir != nil {
-            tile.pipeDir = gameState.level.startingState[i].pipeDir
-        }
-        tile.isCorner = false
-    }
 
     for &tile, i in gameState.level.grid {
         if gameState.level.startingState[i].hasBuilding {
@@ -272,130 +265,6 @@ OpenLevel :: proc(name: string) {
         }
     }
 
-    // RefreshVisibilityGraph()
-    // gameState.path = CalculatePathWithCornerTiles(
-    //     gameState.level.startCoord, 
-    //     gameState.level.endCoord,
-    //     allocator = gameState.pathAllocator
-    // )
-
-    // gameState.path = CalculatePathWithCornerTiles(
-    //     gameState.level.startCoord, 
-    //     gameState.level.endCoord,
-    //     allocator = gameState.pathAllocator
-    // )
-
-    // @TODO: this will probably need other place
-    // Also I don't think I have to completely destroy particles
-    // but that's TBD
-    gameState.turretFireParticle = dm.DefaultParticleSystem
-    gameState.turretFireParticle.maxParticles = 100
-    gameState.turretFireParticle.texture = dm.renderCtx.whiteTexture
-    gameState.turretFireParticle.lifetime = dm.RandomFloat{0.1, 0.2}
-    gameState.turretFireParticle.startColor = dm.color{0, 1, 1, 1}
-    gameState.turretFireParticle.startSize = dm.RandomFloat{0.1, 0.3}
-
-    dm.InitParticleSystem(&gameState.turretFireParticle)
-}
-
-RefreshVisibilityGraph :: proc() {
-
-    // Find corners
-    @static
-    cornerPatterns := [4][9]int{
-        {1, 1, 0, 1, 0, 0, 0, 0, 0},
-        {0, 1, 1, 0, 0, 1, 0, 0, 0},
-        {0, 0, 0, 1, 0, 0, 1, 1, 0},
-        {0, 0, 0, 0, 0, 1, 0, 1, 1},
-    }
-
-    @static
-    cornerDirections := [4]iv2 {
-        { -1, -1},
-        {  1, -1},
-        { -1,  1},
-        {  1,  1},
-    }
-
-    // @TODO: optimisation
-    for &tile, i in gameState.level.grid {
-        tile.isCorner = false
-    }
-
-    cornerTiles := make([dynamic]^Tile, allocator = context.temp_allocator)
-    append(&cornerTiles, GetTileAtCoord(gameState.level.startCoord))
-    for &tile, i in gameState.level.grid {
-        // tile.isCorner = false
-
-        foundPatterns := [4]bool{true, true, true, true}
-        for pattern, patternIdx in cornerPatterns {
-            if foundPatterns[patternIdx] == false {
-                continue
-            }
-
-            for patternElement, index in pattern {
-                offsetX := index % 3 - 1
-                offsetY := index / 3 - 1
-
-                if offsetX == 0 && offsetY == 0 {
-                    continue
-                }
-
-                neighbor := tile.gridPos + {i32(offsetX), i32(offsetY)}
-                neighborTile := GetTileAtCoord(neighbor)
-                if neighborTile != nil {
-                    found := true
-                    if patternElement == 1 {
-                        found = neighborTile.type == .WalkArea && 
-                                neighborTile.building == {} &&
-                                (tile.type == .BuildArea ||
-                                 tile.building != {})
-                    }
-                    // found ||= patternElement == 0 && tile.type == .BuildArea
-
-                    if found == false {
-                        foundPatterns[patternIdx] = false
-                    }
-                }
-            }
-        }
-
-        for found, i in foundPatterns {
-            if found {
-                // tile.isCorner = true
-                // break
-                offset := cornerDirections[i]
-                cornerTile := GetTileAtCoord(tile.gridPos + offset)
-                if cornerTile != nil {
-                    cornerTile.isCorner = true
-                    append(&cornerTiles, cornerTile)
-                    // break
-                }
-            }
-        }
-    }
-    append(&cornerTiles, GetTileAtCoord(gameState.level.endCoord))
-
-    CreateVisiblityGraph(cornerTiles[:])
-}
-
-CreateVisiblityGraph :: proc(cornerTiles: []^Tile) {
-    visibleTiles := make([dynamic]iv2, allocator = context.temp_allocator)
-    for tile in cornerTiles {
-        clear(&visibleTiles)
-        for otherTile in cornerTiles {
-            if tile == otherTile {
-                continue
-            }
-
-            if IsEmptyLineBetweenCoords(tile.gridPos, otherTile.gridPos) {
-                append(&visibleTiles, otherTile.gridPos)
-            }
-        }
-
-        // tile.visibleWaypoints = make([]iv2, len(visibleTiles), gameState.pathAllocator)
-        // copy(tile.visibleWaypoints, visibleTiles[:])
-    }
 }
 
 CloseCurrentLevel :: proc() {
@@ -408,7 +277,7 @@ CloseCurrentLevel :: proc() {
 
     for &tile in gameState.level.grid {
         tile.building = {}
-        tile.pipeDir = nil
+        tile.beltDir = {}
     }
 
     gameState.level = nil
@@ -559,8 +428,6 @@ PlaceBuilding :: proc(buildingIdx: int, gridPos: iv2) {
         position = dm.ToV2(gridPos) + dm.ToV2(building.size) / 2,
     }
 
-    buildingTile := GetTileAtCoord(gridPos)
-
     handle := dm.AppendElement(&gameState.spawnedBuildings, toSpawn)
 
     // TODO: check for outside grid coords
@@ -568,46 +435,21 @@ PlaceBuilding :: proc(buildingIdx: int, gridPos: iv2) {
         for x in 0..<building.size.x {
             idx := CoordToIdx(gridPos + {x, y})
             gameState.level.grid[idx].building = handle
-            gameState.level.grid[idx].pipeDir = {}
+            gameState.level.grid[idx].beltDir = {}
         }
     }
 
-    // Find and place pipes
-    startX := gridPos.x - 1
-    endX   := gridPos.x + building.size.x
+    PlaceBelt(gridPos + building.output.offset, building.output.beltDir)
 
-    startY := gridPos.y - 1
-    endY   := gridPos.y + building.size.y
-
-    SetPipe :: proc(coord, neighbor: iv2, targetDir: Direction) {
-        buildingTile := GetTileAtCoord(coord)
-
-        if IsInsideGrid(neighbor) {
-            tile := GetTileAtCoord(neighbor)
-            if ReverseDir[targetDir] in tile.pipeDir {
-                buildingTile.pipeDir += { targetDir }
-            }
+    for input, i in building.inputs {
+        tile := PlaceBelt(gridPos + input.offset, building.output.beltDir)
+        if tile == nil {
+            continue
         }
-    }
 
-    for x in startX + 1 ..= endX - 1 {
-        SetPipe({x, startY + 1}, {x, startY}, .South)
+        tile.isInput = true
+        tile.inputIndex = i
     }
-
-    for x in startX + 1 ..= endX - 1 {
-        SetPipe({x, endY - 1}, {x, endY}, .North)
-    }
-
-    for y in startY + 1 ..= endY - 1 {
-        SetPipe({startX + 1, y}, {startX, y}, .West)
-    }
-
-    for y in startY + 1 ..= endY - 1 {
-        SetPipe({endX - 1, y}, {endX, y}, .East)
-    }
-
-    CheckBuildingConnection(gridPos)
-    RefreshVisibilityGraph()
 }
 
 
@@ -644,7 +486,7 @@ RemoveBuilding :: proc(building: BuildingHandle) {
         for x in 0..<buildingData.size.x {
             tile := GetTileAtCoord(inst.gridPos + {x, y})
             tile.building = {}
-            tile.pipeDir = {}
+            tile.beltDir = {}
         }
     }
 
@@ -657,8 +499,7 @@ TestConnectionPredicate :: proc(currentTile: Tile, neighbor: Tile, goal: iv2) ->
     return neighbor.gridPos == goal || 
         (
             neighbor.type == .WalkArea && 
-            neighbor.building == {} &&
-            neighbor.activeInConnectionTest == false
+            neighbor.building == {}
         )
 }
 
@@ -666,17 +507,17 @@ WalkablePredicate :: proc(currentTile: Tile, neighbor: Tile, goal: iv2) -> bool 
     return neighbor.gridPos == goal || (neighbor.type == .WalkArea && neighbor.building == {})
 }
 
-PipePredicate :: proc(currentTile: Tile, neighbor: Tile, goal: iv2) -> bool {
-    delta :=  neighbor.gridPos - currentTile.gridPos
-    dir := VecToDir(delta)
-    reverse := ReverseDir[dir]
+// PipePredicate :: proc(currentTile: Tile, neighbor: Tile, goal: iv2) -> bool {
+//     delta :=  neighbor.gridPos - currentTile.gridPos
+//     dir := VecToDir(delta)
+//     reverse := ReverseDir[dir]
 
-    return (dir in currentTile.pipeDir && 
-            reverse in neighbor.pipeDir) && 
-           (neighbor.building == {} ||
-            neighbor.gridPos == goal 
-            )
-}
+//     return (dir in currentTile.beltDir && 
+//             reverse in neighbor.beltDir) && 
+//            (neighbor.building == {} ||
+//             neighbor.gridPos == goal 
+//             )
+// }
 
 CalculatePath :: proc(start, goal: iv2, traversalPredicate: TileTraversalPredicate, allocator := context.allocator) -> []iv2 {
     openCoords: pq.Priority_Queue(iv2)
@@ -750,190 +591,29 @@ CalculatePath :: proc(start, goal: iv2, traversalPredicate: TileTraversalPredica
     return nil
 }
 
-CalculatePathWithCornerTiles :: proc(start, goal: iv2, allocator := context.allocator) -> []iv2 {
-    openCoords: pq.Priority_Queue(iv2)
-
-    // @TODO: I can probably make gScore and fScore as 2d array so 
-    // there is no need for maps
-    cameFrom := make(map[iv2]iv2, allocator = context.temp_allocator)
-    gScore   := make(map[iv2]f32, allocator = context.temp_allocator)
-    fScore   := make(map[iv2]f32, allocator = context.temp_allocator)
-
-    Heuristic :: proc(a, b: iv2) -> f32 {
-        return glsl.distance(dm.ToV2(a), dm.ToV2(b))
+PlaceBelt :: proc(coord: iv2, dir: BeltDir) -> ^Tile {
+    tile := GetTileAtCoord(coord)
+    if tile == nil {
+        return nil
     }
 
-    Less :: proc(a, b: iv2) -> bool {
-        scoreMap := cast(^map[iv2]f32) context.user_ptr
-        aScore := scoreMap[a] or_else max(f32)
-        bScore := scoreMap[b] or_else max(f32)
+    tile.beltDir = dir
 
-        return aScore < bScore
+    dirVec := DirToVec[dir.to]
+    nextTile := GetTileAtCoord(coord + dirVec)
+    if nextTile != nil && 
+       nextTile.beltDir.from == ReverseDir[dir.to]
+    {
+        tile.nextTile = coord + dirVec
     }
 
-    context.user_ptr = &fScore
-    pq.init(&openCoords, Less, pq.default_swap_proc(iv2))
-
-    pq.push(&openCoords, start)
-
-    gScore[start] = 0
-    fScore[start] = Heuristic(start, goal)
-
-    for pq.len(openCoords) > 0 {
-        current := pq.peek(openCoords)
-        if current == goal {
-            ret := make([dynamic]iv2, allocator)
-            append(&ret, current)
-
-            for (current in cameFrom) {
-                current = cameFrom[current]
-                inject_at(&ret, 0, current)
-            }
-
-            return ret[:]
-        }
-
-        currentTile := GetTileAtCoord(current)
-
-        pq.pop(&openCoords)
-        // neighboursCoords := GetNeighbourCoords(current, allocator = context.temp_allocator)
-        for neighborCoord in currentTile.visibleWaypoints {
-            neighbourTile := GetTileAtCoord(neighborCoord)
-
-            // if traversalPredicate(currentTile^, neighbourTile^, goal) == false {
-            //     continue
-            // }
-
-            // @NOTE: I can make it depend on the edge on the tilemap
-            weight := glsl.distance(dm.ToV2(current), dm.ToV2(neighborCoord))
-            // weight *= weight
-            newScore := gScore[current] + weight
-            oldScore := gScore[neighborCoord] or_else max(f32)
-            if newScore < oldScore {
-                cameFrom[neighborCoord] = current
-                gScore[neighborCoord] = newScore
-                fScore[neighborCoord] = newScore + Heuristic(neighborCoord, goal)
-                if slice.contains(openCoords.queue[:], neighborCoord) == false {
-                    pq.push(&openCoords, neighborCoord)
-                }
-            }
-        }
+    dirVec = DirToVec[dir.from]
+    prevTile := GetTileAtCoord(coord + dirVec)
+    if prevTile != nil && 
+       prevTile.beltDir.to == ReverseDir[dir.from]
+    {
+        prevTile.nextTile = coord
     }
 
-    return nil
+    return tile
 }
-
-IsEmptyLineBetweenCoords :: proc(coordA, coordB: iv2, checkedTiles: ^[dynamic]iv2 = nil) -> bool {
-    // Use line drawing algorithm to chceck if there
-    // is a straight line between coords that 
-    // doesn't contain any non-wolkable tiles
-
-    // http://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
-    // @NOTE: the article mentions that the algorithm might move in different
-    // path, when start and end points are swapped. I'm not sure if that's 
-    // an actual issue
-
-    x0 := coordA.x
-    y0 := coordA.y
-    x1 := coordB.x
-    y1 := coordB.y
-
-    dx := abs(x1 - x0)
-    dy := abs(y1 - y0)
-
-    n :=  dx + dy + 1
-
-    sx: i32 = x0 < x1 ? 1 : -1
-    sy: i32 = y0 < y1 ? 1 : -1
-
-    error := dx - dy
-    dx *= 2
-    dy *= 2
-
-    clear(checkedTiles)
-    for ; n > 0; n -= 1 {
-        tile := GetTileAtCoord({x0, y0})
-        if(checkedTiles != nil) {
-            append(checkedTiles, tile.gridPos)
-        }
-
-        if tile.gridPos != coordA &&
-           tile.gridPos != coordB &&
-          (tile.type != .WalkArea ||
-            tile.building != {})
-        {
-            return false
-        }
-
-        if error > 0 {
-            x0 = x0 + sx
-            error = error - dy
-        }
-        else {
-            y0 = y0 + sy
-            error = error + dx
-        }
-    }
-
-    return true
-}
-
-// SimplifyPath :: proc(path: []iv2, allocator := context.allocator) -> []iv2 {
-//     newPath := make([dynamic]iv2, 0, len(path), allocator = context.temp_allocator)
-//     waypoints := make([dynamic]iv2, 0, len(path), allocator = context.temp_allocator)
-
-//     append(&waypoints, path[0])
-//     for i in 1..<len(path) {
-//         coord := path[i]
-//         tile := GetTileAtCoord(coord)
-
-//         if tile.isCorner {
-//             append(&waypoints, coord)
-//         }
-
-//         // for x in -1..=1 {
-//         //     for y in -1..=1 {
-//         //         // if x == 0 || y == 0 {
-//         //         //     continue
-//         //         // }
-
-//         //         neighbor := GetTileAtCoord(coord + {i32(x), i32(y)})
-//         //         if neighbor != nil && neighbor.isCorner {
-//         //             append(&waypoints, coord)
-//         //             break
-//         //         }
-//         //     }
-//         // }
-//     }
-//     append(&waypoints, path[len(path) - 1])
-
-//     wIdx := 0
-//     for {
-//         append(&newPath, waypoints[wIdx])
-        
-//         if wIdx >= len(waypoints) - 1 {
-//             break
-//         }
-
-//         nextWaypointIdx := 0
-//         for nextIdx in (wIdx + 1) ..< len(waypoints) {
-//             if IsEmptyLineBetweenCoords(waypoints[wIdx], waypoints[nextIdx]) {
-//                 nextWaypointIdx = nextIdx
-//             }
-//         }
-
-//         if nextWaypointIdx == 0 {
-//             break
-//         }
-
-//         wIdx = nextWaypointIdx
-//     }
-//     append(&newPath, path[len(path) - 1])
-
-//     // newPath = waypoints
-
-//     ret := make([]iv2, len(newPath), allocator = allocator)
-//     copy(ret, newPath[:])
-
-//     return ret
-// }

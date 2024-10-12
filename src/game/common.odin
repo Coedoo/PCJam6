@@ -8,25 +8,21 @@ import "core:fmt"
 import "core:slice"
 
 Direction :: enum {
+    None,
+
     East,
     North,
     West,
     South,
 }
 
-DirectionSet :: distinct bit_set[Direction; u32]
-
-DirVertical   :: DirectionSet{ .North, .South }
-DirHorizontal :: DirectionSet{ .West, .East }
-
-DirNE   :: DirectionSet{ .North, .East }
-DirNW   :: DirectionSet{ .North, .West }
-DirSE   :: DirectionSet{ .South, .East }
-DirSW   :: DirectionSet{ .South, .West }
-
-DirSplitter :: DirectionSet{ .East, .North, .West, .South }
+BeltDir :: struct {
+    from, to: Direction,
+}
 
 NextDir := [Direction]Direction {
+    .None  = .None,
+
     .East  = .South, 
     .North = .East, 
     .West  = .North, 
@@ -34,6 +30,8 @@ NextDir := [Direction]Direction {
 }
 
 PrevDir := [Direction]Direction {
+    .None = .None,
+
     .East  = .North, 
     .North = .West, 
     .West  = .South, 
@@ -41,6 +39,8 @@ PrevDir := [Direction]Direction {
 }
 
 ReverseDir := [Direction]Direction {
+    .None = .None,
+
     .East  = .West,
     .West  = .East,
     .North = .South,
@@ -48,6 +48,8 @@ ReverseDir := [Direction]Direction {
 }
 
 DirToRot := [Direction]f32 {
+    .None = 0,
+
     .East  = 0, 
     .North = 90, 
     .West  = 180, 
@@ -55,8 +57,10 @@ DirToRot := [Direction]f32 {
 }
 
 DirToVec := [Direction]iv2 {
-    .East  = {1,  0}, 
-    .North = {0,  1}, 
+    .None = {0, 0},
+
+    .East  = {1,  0},
+    .North = {0,  1},
     .West  = {-1, 0},
     .South = {0, -1},
 }
@@ -68,29 +72,6 @@ VecToDir :: proc(vec: iv2) -> Direction {
     else {
         return vec.y < 0 ? .South : .North
     }
-}
-
-// @TODO: I'm pretty sure that it can be done easier
-RotateByDir :: proc(set: DirectionSet, direction: Direction) -> (ret: DirectionSet) {
-    iter: int
-    switch direction {
-    case .East:  iter = 0
-    case .North: iter = 1
-    case .West:  iter = 2
-    case .South: iter = 3
-    }
-
-    ret = set
-    for i in 0..<iter {
-        new: DirectionSet
-        for dir in ret {
-            new += { NextDir[dir] }
-        }
-
-        ret = new
-    }
-
-    return
 }
 
 CoordToPos :: proc(coord: iv2) -> v2 {
