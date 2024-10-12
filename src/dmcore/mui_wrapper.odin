@@ -128,6 +128,21 @@ muiHeader :: proc(mui: ^Mui, label: string, opt: mu.Options = {.EXPANDED}) -> bo
     return mu.header(&mui.muiCtx, label, opt) != {}
 }
 
+muiOpenPopup :: proc(mui: ^Mui, label: string) {
+    mu.open_popup(&mui.muiCtx, label)
+}
+
+@(deferred_in_out=scoped_muPopup)
+muiPopup :: proc(mui: ^Mui, label: string) -> bool {
+    return mu.begin_popup(&mui.muiCtx, label)
+}
+
+scoped_muPopup :: proc(mui: ^Mui, label: string, ok: bool) {
+    if ok {
+        mu.end_popup(&mui.muiCtx)
+    }
+}
+
 /// Utility
 
 muiIsCursorOverUI :: proc(mui: ^Mui, cursorPos: iv2) -> bool {

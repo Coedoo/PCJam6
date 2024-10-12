@@ -439,10 +439,12 @@ PlaceBuilding :: proc(buildingIdx: int, gridPos: iv2) {
         }
     }
 
-    PlaceBelt(gridPos + building.output.offset, building.output.beltDir)
+    if building.output.beltDir != {} {
+        PlaceBelt(gridPos + building.output.offset, building.output.beltDir)
+    }
 
     for input, i in building.inputs {
-        tile := PlaceBelt(gridPos + input.offset, building.output.beltDir)
+        tile := PlaceBelt(gridPos + input.offset, input.beltDir)
         if tile == nil {
             continue
         }
@@ -459,34 +461,14 @@ RemoveBuilding :: proc(building: BuildingHandle) {
         return
     }
 
-    // #reverse for connectedHandle in inst.energyTargets {
-    //     other := dm.GetElementPtr(gameState.spawnedBuildings, connectedHandle) or_continue
-    //     idx := slice.linear_search(other.energySources[:], building) or_continue
-
-    //     // @NOTE: @TODO: this will change update order and potentially
-    //     // game outcome. Is that ok?
-    //     unordered_remove(&other.energySources, idx)
-    // }
-
-    // for key, path in gameState.pathsBetweenBuildings {
-    //     if key.from == building || key.to == building {
-    //         it := dm.MakePoolIterReverse(&gameState.energyPackets)
-    //         for packet in dm.PoolIterate(&it) {
-    //             if packet.pathKey == key {
-    //                 dm.FreeSlot(&gameState.energyPackets, packet.handle)
-    //             }
-    //         }
-
-    //         delete_key(&gameState.pathsBetweenBuildings, key)
-    //     }
-    // }
-
     buildingData := &Buildings[inst.dataIdx]
     for y in 0..<buildingData.size.y {
         for x in 0..<buildingData.size.x {
             tile := GetTileAtCoord(inst.gridPos + {x, y})
             tile.building = {}
-            tile.beltDir = {}
+            if tile.beltDir != {} {
+                DestroyBelt(tile)
+            }
         }
     }
 
@@ -617,3 +599,28 @@ PlaceBelt :: proc(coord: iv2, dir: BeltDir) -> ^Tile {
 
     return tile
 }
+
+DestroyBelt :: proc(tile: ^Tile) {
+    tile.beltDir = {}
+    tile.nextTile = nil
+
+    for x in -1..=1 {
+        for y in -1..=1 {
+            if x == 0 && y == 0 {
+                continue
+            }
+
+            otherTile := GetTileAtCoord(tile.gridPos + {i32(x), i32(y)})
+            if otherTile == nil {
+                continue
+            }
+
+            if otherTile.nextTile == tile.gridPos {
+                // fmt.println("AAAAAAAAA")
+                otherTile.nextTile = nil
+            }
+        }
+    }
+
+}
+

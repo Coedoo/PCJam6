@@ -30,6 +30,23 @@ DEBUG_TILE_OVERLAY := false
 
 Buildings := [?]Building {
     {
+        name = "Container",
+        spriteName = "buildings.png",
+        spriteRect = {0, 0, 32, 32},
+
+        size = {3, 3},
+
+        cost = 100,
+
+        output = {},
+        inputs = {
+            {{0, 1}, {.West, .East}}
+        },
+
+        isContainer = true,
+    },
+
+    {
         name = "Factory 1",
         spriteName = "buildings.png",
         spriteRect = {0, 0, 32, 32},
@@ -61,7 +78,7 @@ Buildings := [?]Building {
         output = {{2, 1}, {.West, .East}},
         
         inputs = {
-            {{0, 1}, {.East, .West}}
+            {{0, 1}, {.West, .East}}
         }
     },
 
@@ -81,8 +98,8 @@ Buildings := [?]Building {
         output = {{2, 1}, {.West, .East}},
         
         inputs = {
-            {{0, 0}, {.East, .West}},
-            {{0, 2}, {.East, .West}},
+            {{0, 0},{.West, .East}},
+            {{0, 2},{.West, .East}},
         }
     },
 }

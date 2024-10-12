@@ -116,27 +116,6 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     gameState.arrowSprite = dm.CreateSprite(dm.GetTextureAsset("buildings.png"), dm.RectInt{32 * 2, 0, 32, 32})
     gameState.arrowSprite.scale = 0.4
     gameState.arrowSprite.origin = {0, 0.5}
-
-    // for &system, i in gameState.tileEnergyParticles {
-    //     system = dm.DefaultParticleSystem
-
-    //     system.texture = dm.GetTextureAsset("Energy.png")
-    //     system.startColor = EnergyColor[EnergyType(i)]
-
-    //     system.emitRate = 0
-
-    //     system.startSize = 0.4
-
-    //     system.color = dm.ColorOverLifetime{
-    //         min = {1, 1, 1, 1},
-    //         max = {1, 1, 1, 0},
-    //         easeFun = .Cubic_Out,
-    //     }
-
-    //     system.startSpeed = 0.5
-
-    //     dm.InitParticleSystem(&system)
-    // }
 }
 
 @(export)
@@ -278,19 +257,9 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
         if tile.building != {} {
             RemoveBuilding(tile.building)
         }
-        // else if tile.beltDir != {} {
-        //     connectedBuildings := GetConnectedBuildings(tile.gridPos, allocator = context.temp_allocator)
-
-        //     for dir in tile.beltDir {
-        //         neighborCoord := tile.gridPos + DirToVec[dir]
-        //         neighbor := GetTileAtCoord(neighborCoord)
-        //         if neighbor.building != {} {
-        //             neighbor.beltDir -= { ReverseDir[dir] }
-        //         }
-        //     }
-
-        //     tile.beltDir = nil
-        // }
+        else if tile.beltDir != {} {
+            DestroyBelt(tile)
+        }
     }
 
     if dm.GetMouseButton(.Right) == .JustPressed &&
@@ -539,17 +508,6 @@ GameRender : dm.GameRender : proc(state: rawptr) {
 
     // Belt
     for tile, idx in gameState.level.grid {
-        // for dir in tile.beltDir {
-        //     dm.DrawWorldRect(
-        //         dm.renderCtx.whiteTexture,
-        //         tile.worldPos,
-        //         {0.5, 0.1},
-        //         rotation = math.to_radians(DirToRot[dir]),
-        //         color = {0, 0.1, 0.8, 0.9},
-        //         pivot = {0, 0.5}
-        //     )
-        // }
-
         if tile.beltDir == {} {
             continue
         }
@@ -557,7 +515,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         dm.DrawWorldRect(
             dm.renderCtx.whiteTexture,
             tile.worldPos,
-            {0.5, 0.1},
+            {0.5, 0.9},
             rotation = math.to_radians(DirToRot[tile.beltDir.from]),
             color = {0, 0.1, 0.8, 0.9},
             pivot = {0, 0.5}
@@ -566,7 +524,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         dm.DrawWorldRect(
             dm.renderCtx.whiteTexture,
             tile.worldPos,
-            {0.5, 0.1},
+            {0.5, 0.9},
             rotation = math.to_radians(DirToRot[tile.beltDir.to]),
             color = {0.8, 0.1, 0, 0.9},
             pivot = {0, 0.5}
@@ -582,7 +540,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
     // Items 
     it := dm.MakePoolIter(&gameState.spawnedItems)
     for item in dm.PoolIterate(&it) {
-        dm.DrawBlankSprite(item.position, {1, 1})
+        dm.DrawBlankSprite(item.position, {0.8, 0.8})
     }
 
     // Placing building
@@ -620,21 +578,12 @@ GameRender : dm.GameRender : proc(state: rawptr) {
                            {0, 0.1, 0.8, 0.5} :
                            {0.8, 0.1, 0, 0.5})
 
-        // for dir in gameState.buildingBeltDir {
-        //     dm.DrawWorldRect(
-        //         dm.renderCtx.whiteTexture,
-        //         dm.ToV2(coord) + 0.5,
-        //         {0.5, 0.1},
-        //         rotation = math.to_radians(DirToRot[dir]),
-        //         color = color,
-        //         pivot = {0, 0.5}
-        //     )
-        // }
+
 
         dm.DrawWorldRect(
             dm.renderCtx.whiteTexture,
             dm.ToV2(coord) + 0.5,
-            {0.5, 0.1},
+            {0.5, 0.9},
             rotation = math.to_radians(DirToRot[gameState.buildingBeltDir.from]),
             color = {0, 0.1, 0.8, 0.5},
             pivot = {0, 0.5}
@@ -643,7 +592,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         dm.DrawWorldRect(
             dm.renderCtx.whiteTexture,
             dm.ToV2(coord) + 0.5,
-            {0.5, 0.1},
+            {0.5, 0.9},
             rotation = math.to_radians(DirToRot[gameState.buildingBeltDir.to]),
             color = {0.8, 0.1, 0, 0.5},
             pivot = {0, 0.5}

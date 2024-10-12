@@ -40,6 +40,8 @@ Building :: struct {
 
     producedItem: Item,
     productionRate: int,
+
+    isContainer: bool,
 }
 
 BuildingInstance :: struct {

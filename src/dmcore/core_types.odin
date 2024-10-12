@@ -106,8 +106,7 @@ TimeData :: struct {
 
     gameDuration: time.Duration,
 
-    deltaTime: f64,
-  
+    deltaTime: f32,
     frame: uint,
 
     gameTime: f64,
@@ -124,7 +123,7 @@ TimeUpdate :: proc(platform: ^Platform) {
     platform.time.currentTimestamp = time.now()
 
     delta := time.diff(platform.time.lastTimestamp, platform.time.currentTimestamp)
-    platform.time.deltaTime = time.duration_seconds(delta)
+    platform.time.deltaTime = f32(time.duration_seconds(delta))
 
     gameDelta := time.diff(platform.time.startTimestamp, platform.time.currentTimestamp)
     platform.time.unscalledTime = time.duration_seconds(gameDelta)
