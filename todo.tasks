@@ -1,10 +1,27 @@
 
 
- ✔ Colored pipe directions / sprites @done (24-10-12 13:02)
  ☐ Belt sprites
+ ☐ Splitters/Merger
+ ☐ Levels
+   ☐ level tasks
+   ☐ handle task fail
+   ☐ dialogs
+   ☐ finishing and moving to next level
+   ☐ scores and switch between levels?
+
+ ☐ Tutorials
+ ☐ game save
+
+
+
+ ✔ Colored pipe directions / sprites @done (24-10-12 13:02)
  ✔ Building inputs @done (24-10-12 13:02)
- ☐ items recipes
- ☐ items production from recipes
- ☐ Level output
- ☐ time speed up
- ☐ validation system
+ ✔ items recipes @done (24-10-12 14:19)
+ ✔ items production from recipes @done (24-10-12 14:19)
+
+ ✔ Level output @done (24-10-12 22:49)
+  ✔ Have a special building for storing @done (24-10-12 22:49)
+ ✔ Validation state @done (24-10-12 22:49)
+   ✔ buildings only produce items when validation state is active @done (24-10-12 22:49)
+   ✔ reset the game state after @done (24-10-12 22:49)
+

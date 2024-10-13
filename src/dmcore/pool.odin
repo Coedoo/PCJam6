@@ -133,7 +133,7 @@ FreeSlotAtHandle :: proc(pool: ^ResourcePool($T, $H), handle: H) {
 }
 
 ClearPool :: proc(pool: ^ResourcePool($T, $H)) {
-    clear(&pool.slots)
+    reserve(&pool.slots, 0)
     clear(&pool.elements)
 }
 

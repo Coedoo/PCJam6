@@ -12,13 +12,15 @@ BUILDING_DISTANCE :: 10
 
 START_MONEY :: 1000
 
-PRODUCTION_BASE :: 10
+PRODUCTION_BASE :: 1
 
 ITEM_SIZE :: 1
-ITEM_SPEED :: 3
+ITEM_SPEED :: 10
 
 MAX_INPUTS :: 3
 INPUT_MAX_ITEMS :: 50
+
+VALIDATION_MODE_DURATION :: 10
 
 START_LEVEL :: "Level_0"
 
@@ -90,7 +92,7 @@ Buildings := [?]Building {
         size = {3, 3},
 
         maxStorage = 20,
-        producedItem= .Candy,
+        producedItem= .BiggerCandy,
         productionRate = 10,
 
         cost = 100,
