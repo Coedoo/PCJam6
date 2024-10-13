@@ -16,8 +16,15 @@ iv2 :: dm.iv2
 BuildUpMode :: enum {
     None,
     Building,
-    Pipe,
+    Belt,
     Destroy,
+}
+
+BeltBuildMode :: enum {
+    Straight,
+    Angled,
+    Splitter,
+    Merger,
 }
 
 GameStage :: enum {
@@ -44,6 +51,7 @@ GameState :: struct {
         selectedTile: iv2,
 
         buildUpMode: BuildUpMode,
+        beltBuildMode: BeltBuildMode,
         selectedBuildingIdx: int,
         buildingBeltDir: BeltDir,
 
@@ -61,6 +69,12 @@ GameState :: struct {
 
     playerSprite: dm.Sprite,
     arrowSprite: dm.Sprite,
+
+    straightBeltSprite: dm.Sprite,
+    angledBeltSprite: dm.Sprite,
+
+    splitterSprite: dm.Sprite,
+    mergerSprite: dm.Sprite,
 }
 
 gameState: ^GameState
@@ -96,6 +110,7 @@ PreGameLoad : dm.PreGameLoad : proc(assets: ^dm.Assets) {
     dm.RegisterAsset("Energy.png", dm.TextureAssetDescriptor{})
 
     dm.RegisterAsset("ship.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("belts.png", dm.TextureAssetDescriptor{})
 
 
     dm.platform.SetWindowSize(1200, 900)
@@ -125,6 +140,13 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     gameState.arrowSprite = dm.CreateSprite(dm.GetTextureAsset("buildings.png"), dm.RectInt{32 * 2, 0, 32, 32})
     gameState.arrowSprite.scale = 0.4
     gameState.arrowSprite.origin = {0, 0.5}
+
+    beltsTex := dm.GetTextureAsset("belts.png")
+    gameState.straightBeltSprite = dm.CreateSprite(beltsTex, dm.RectInt{0,  0, 16, 16})
+    gameState.angledBeltSprite   = dm.CreateSprite(beltsTex, dm.RectInt{16, 0, 16, 16})
+
+    gameState.splitterSprite = dm.CreateSprite(beltsTex, dm.RectInt{0, 16, 16, 16})
+    gameState.mergerSprite = dm.CreateSprite(beltsTex, dm.RectInt{16, 16, 16, 16})
 }
 
 @(export)
@@ -135,6 +157,52 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
         case .Build: BuildingModeUpdate()
         case .Validation: ValidationModeUpdate()
         case .ValidationResult: ValidationResultUpdate()
+    }
+    // Highlight Building 
+    if gameState.buildUpMode == .None && dm.muiIsCursorOverUI(dm.mui, dm.input.mousePos) == false {
+        if dm.GetMouseButton(.Left) == .JustPressed {
+            coord := MousePosGrid()
+            gameState.selectedTile = coord
+        }
+    }
+
+    tile := GetTileAtCoord(gameState.selectedTile)
+    if tile.building != {} || tile.beltDir != {} {
+        if dm.muiBeginWindow(dm.mui, "Selected Building", {600, 10, 140, 250}, {.NO_CLOSE}) {
+            dm.muiLabel(dm.mui, tile.beltDir)
+
+            if dm.muiHeader(dm.mui, "Building") {
+                if tile.building != {} {
+                    building, ok := dm.GetElementPtr(gameState.spawnedBuildings, tile.building)
+                    if ok {
+                        data := &Buildings[building.dataIdx]
+                        dm.muiLabel(dm.mui, "Name:", data.name)
+                        dm.muiLabel(dm.mui, building.handle)
+                        dm.muiLabel(dm.mui, "Pos:", building.gridPos)
+
+                        dm.muiLabel(dm.mui)
+
+                        productionTime := PRODUCTION_BASE / f32(data.productionRate)
+                        productionPercent := building.productionTimer / productionTime
+
+                        dm.muiLabel(dm.mui, "Production: ", int(productionPercent * 100), "%", sep = "")
+                        dm.muiLabel(dm.mui, data.producedItem, building.currentItemsCount)
+                        // dm.muiLabel(dm.mui, "requestedEnergy:", building.requestedEnergy)
+
+                        dm.muiLabel(dm.mui, "\nInputs:")
+                        for input in building.inputState {
+                            if input.storedItem == .None {
+                                continue
+                            }
+
+                            dm.muiLabel(dm.mui, input.storedItem, input.itemsCount)
+                        }
+                    }
+                }
+            }
+
+            dm.muiEndWindow(dm.mui)
+        }
     }
 }
 
@@ -199,26 +267,31 @@ BuildingModeUpdate :: proc() {
         gameState.buildUpMode = .None
     }
 
-    // Pipe
-    if gameState.buildUpMode == .Pipe &&
+    // Belt
+    if gameState.buildUpMode == .Belt &&
        cursorOverUI == false
     {
-        @static prevCoord: iv2
-
         leftBtn := dm.GetMouseButton(.Left)
         if leftBtn == .Down  {
             coord := MousePosGrid()
             if IsInDistance(gameState.playerPosition, coord) {
                 tile := GetTileAtCoord(coord)
 
-                canPlace :=  (prevCoord != coord || tile.beltDir != gameState.buildingBeltDir)
-                canPlace &&= tile.beltDir != gameState.buildingBeltDir
-                canPlace &&= tile.building == {}
+                canPlace := tile.building == {}
 
                 if canPlace {
-                    PlaceBelt(coord, gameState.buildingBeltDir)
+                    switch gameState.beltBuildMode {
+                    case .Straight: fallthrough
+                    case .Angled: 
+                        PlaceBelt(coord, gameState.buildingBeltDir)
+                    case .Splitter:
+                        PlaceSplitter(tile)
+                    case .Merger:
+                        tile.merger = Merger{
+                            outDir = gameState.buildingBeltDir.to
+                        }
+                    }
 
-                    prevCoord = coord
                 }
             }
         }
@@ -227,6 +300,21 @@ BuildingModeUpdate :: proc() {
             dirSet := NextDir if dm.input.scroll < 0 else PrevDir
             gameState.buildingBeltDir.from = dirSet[gameState.buildingBeltDir.from]
             gameState.buildingBeltDir.to = dirSet[gameState.buildingBeltDir.to]
+        }
+
+        if dm.GetKeyState(.Num1) == .JustPressed {
+            gameState.beltBuildMode = .Straight
+            gameState.buildingBeltDir.from = ReverseDir[gameState.buildingBeltDir.to]
+        }
+        if dm.GetKeyState(.Num2) == .JustPressed {
+            gameState.beltBuildMode = .Angled
+            gameState.buildingBeltDir.from = NextDir[gameState.buildingBeltDir.to]
+        }
+        if dm.GetKeyState(.Num3) == .JustPressed {
+            gameState.beltBuildMode = .Splitter
+        }
+        if dm.GetKeyState(.Num4) == .JustPressed {
+            gameState.beltBuildMode = .Merger
         }
 
         if dm.GetMouseButton(.Middle) == .JustPressed {
@@ -239,13 +327,6 @@ BuildingModeUpdate :: proc() {
         }
     }
 
-    // Highlight Building 
-    if gameState.buildUpMode == .None && cursorOverUI == false {
-        if dm.GetMouseButton(.Left) == .JustPressed {
-            coord := MousePosGrid()
-            gameState.selectedTile = coord
-        }
-    }
 
     // Building
     if gameState.buildUpMode == .Building
@@ -282,16 +363,17 @@ BuildingModeUpdate :: proc() {
             }
         }
 
-        dm.muiLabel(dm.mui, "Pipes:")
-        if dm.muiButton(dm.mui, "Stright") {
-            gameState.buildUpMode = .Pipe
-            gameState.buildingBeltDir = {.South, .North}
+        // dm.muiLabel(dm.mui, "Pipes:")
+        if dm.muiButton(dm.mui, "Belt") {
+            gameState.buildUpMode = .Belt
+            gameState.beltBuildMode = .Straight
+            gameState.buildingBeltDir = {.West, .East}
         }
 
-        if dm.muiButton(dm.mui, "Angled") {
-            gameState.buildUpMode = .Pipe
-            gameState.buildingBeltDir = {.South, .West}
-        }
+        // if dm.muiButton(dm.mui, "Angled") {
+        //     gameState.buildUpMode = .Belt
+        //     gameState.buildingBeltDir = {.South, .East}
+        // }
 
         dm.muiLabel(dm.mui)
         if dm.muiButton(dm.mui, "Destroy") {
@@ -321,45 +403,6 @@ BuildingModeUpdate :: proc() {
         dm.muiEndWindow(dm.mui)
     }
 
-    tile := GetTileAtCoord(gameState.selectedTile)
-    if tile.building != {} || tile.beltDir != {} {
-        if dm.muiBeginWindow(dm.mui, "Selected Building", {600, 10, 140, 250}, {.NO_CLOSE}) {
-            dm.muiLabel(dm.mui, tile.beltDir)
-
-            if dm.muiHeader(dm.mui, "Building") {
-                if tile.building != {} {
-                    building, ok := dm.GetElementPtr(gameState.spawnedBuildings, tile.building)
-                    if ok {
-                        data := &Buildings[building.dataIdx]
-                        dm.muiLabel(dm.mui, "Name:", data.name)
-                        dm.muiLabel(dm.mui, building.handle)
-                        dm.muiLabel(dm.mui, "Pos:", building.gridPos)
-
-                        dm.muiLabel(dm.mui)
-
-                        productionTime := PRODUCTION_BASE / f32(data.productionRate)
-                        productionPercent := building.productionTimer / productionTime
-
-                        dm.muiLabel(dm.mui, "Production: ", int(productionPercent * 100), "%", sep = "")
-                        dm.muiLabel(dm.mui, data.producedItem, building.currentItemsCount)
-                        // dm.muiLabel(dm.mui, "requestedEnergy:", building.requestedEnergy)
-
-                        dm.muiLabel(dm.mui, "\nInputs:")
-                        for input in building.inputState {
-                            if input.storedItem == .None {
-                                continue
-                            }
-
-                            dm.muiLabel(dm.mui, input.storedItem, input.itemsCount)
-                        }
-                    }
-                }
-            }
-
-            dm.muiEndWindow(dm.mui)
-        }
-    }
-
     if gameState.buildUpMode != .None {
         size := iv2{
             100, 60
@@ -374,7 +417,7 @@ BuildingModeUpdate :: proc() {
             {.NO_CLOSE, .NO_RESIZE})
         {
             label := gameState.buildUpMode == .Building ? "Building" :
-                     gameState.buildUpMode == .Pipe     ? "Pipe" :
+                     gameState.buildUpMode == .Belt     ? "Belt" :
                      gameState.buildUpMode == .Destroy  ? "Destroy" :
                                                           "UNKNOWN MODE"
 
@@ -487,14 +530,65 @@ ValidationModeUpdate :: proc() {
                 }
             }
 
-            nextTileCoord, ok := tile.nextTile.?
-            if ok {
-                nextTile := GetTileAtCoord(nextTileCoord)
-                if nextTile == nil {
-                    continue
+
+            if merger, ok := tile.merger.?; ok {
+                merger.movingItem = {}
+                tile.merger = merger
+            }
+
+            if splitter, ok := tile.splitter.?; ok {
+                nextDir := splitter.nextOut
+                for i in 0..<4 {
+                    nextPos := CoordToPos(tile.gridPos + DirToVec[nextDir])
+                    if CheckItemCollision(nextPos, {}) == false {
+                        tile.nextTile = tile.gridPos + DirToVec[nextDir]
+
+                        nextDir = NextDir[nextDir]
+                        if nextDir == splitter.inDir {
+                            nextDir = NextDir[nextDir]
+                        }
+                        break
+                    }
+                    else {
+                        nextDir = NextDir[nextDir]
+                        if nextDir == splitter.inDir {
+                            nextDir = NextDir[nextDir]
+                        }
+                    }
                 }
 
-                item.nextTile = nextTile.gridPos
+                splitter.nextOut = nextDir
+                tile.splitter = splitter
+            }
+
+            if nextTileCoord, ok := tile.nextTile.?; ok {
+                nextTile := GetTileAtCoord(nextTileCoord)
+                assert(nextTile != nil)
+
+                if merger, ok := nextTile.merger.?; ok {
+                    isFree := true
+                    for q in merger.queuedItems {
+                        if q == true {
+                            isFree = false
+                            break
+                        }
+                    }
+
+                    if isFree && merger.movingItem == {} {
+                        item.nextTile = nextTile.gridPos
+                        merger.movingItem = item.handle
+                        merger.queuedItems[tile.beltDir.to] = false
+                    }
+                    else {
+                        // merger.queuedItems[tile.beltDir.to] = true
+                    }
+
+                    nextTile.merger = merger
+                }
+                else {
+                    item.nextTile = nextTile.gridPos
+                }
+
 
                 targetPos = CoordToPos(item.nextTile)
                 pos, leftDist = dm.MoveTowards(item.position, targetPos, leftDist)
@@ -502,7 +596,50 @@ ValidationModeUpdate :: proc() {
                     item.position = pos
                 }
             }
+
+
+            // if splitter, ok := tile.splitter.?; ok {
+            //     nextDir := NextDir[splitter.nextOut]
+            //     for i in 0..<4 {
+            //         nextPos := CoordToPos(tile.gridPos + DirToVec[nextDir])
+            //         if CheckItemCollision(nextPos, {}) || nextDir == splitter.inDir {
+            //             nextDir = NextDir[nextDir]
+            //         }
+            //         else {
+            //             break
+            //         }
+            //     }
+
+            //     splitter.nextOut = nextDir
+            //     tile.splitter = splitter
+            // }
         }
+    }
+
+    ClearValidationState :: proc() {
+        dm.ClearPool(&gameState.spawnedItems)
+
+        it := dm.MakePoolIter(&gameState.spawnedBuildings)
+        for building in dm.PoolIterate(&it) {
+            building.isProducing = false
+            building.currentItemsCount = 0
+            building.productionTimer = 0
+
+            data := Buildings[building.dataIdx]
+
+            for &input in building.inputState {
+                input = {}
+            }
+        }
+
+        for &tile in gameState.level.grid {
+            if merger, ok := tile.merger.?; ok {
+                merger.movingItem = {}
+                merger.queuedItems = {}
+                tile.merger = merger
+            }
+        }
+
     }
 
 
@@ -526,20 +663,7 @@ ValidationModeUpdate :: proc() {
         if dm.muiButton(dm.mui, "Stop") {
             gameState.validationResult = {}
 
-            dm.ClearPool(&gameState.spawnedItems)
-
-            it := dm.MakePoolIter(&gameState.spawnedBuildings)
-            for building in dm.PoolIterate(&it) {
-                building.isProducing = false
-                building.currentItemsCount = 0
-                building.productionTimer = 0
-
-                for &input in building.inputState {
-                    input = {}
-                }
-            }
-
-            // fmt.println(result)
+            ClearValidationState()
             gameState.stage = .Build
         }
 
@@ -551,26 +675,18 @@ ValidationModeUpdate :: proc() {
 
         gameState.validationResult = {}
 
-        dm.ClearPool(&gameState.spawnedItems)
-
         it := dm.MakePoolIter(&gameState.spawnedBuildings)
         for building in dm.PoolIterate(&it) {
-            building.isProducing = false
-            building.currentItemsCount = 0
-            building.productionTimer = 0
 
             data := Buildings[building.dataIdx]
-
             for &input in building.inputState {
                 if data.isContainer {
                     gameState.validationResult[input.storedItem] += input.itemsCount
                 }
-
-                input = {}
             }
         }
 
-        // fmt.println(result)
+        ClearValidationState()
         gameState.stage = .ValidationResult
     }
 
@@ -639,29 +755,56 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         dm.DrawSprite(sprite, pos)
     }
 
-    // Belt
+    // Draw Belts
+    DrawBelt :: proc(beltDir: BeltDir, pos: v2, alpha: f32) {
+        dirA, dirB := DirToVec[beltDir.from], DirToVec[beltDir.to]
+        dirA = {abs(dirA.x), abs(dirA.y)}
+        dirB = {abs(dirB.x), abs(dirB.y)}
+
+        isStraight := (dirA.x == 1 && dirB.x == 1) || (dirA.y == 1 && dirB.y == 1)
+
+        if isStraight {
+            dm.DrawSprite(
+                gameState.straightBeltSprite, 
+                pos,
+                math.to_radians(DirToRot[beltDir.to]),
+                {1, 1, 1, alpha}
+            )
+        }
+        else {
+            sprite := gameState.angledBeltSprite
+
+            sprite.flipY = NextDir[beltDir.from] == beltDir.to
+
+            dm.DrawSprite(
+                sprite,
+                pos,
+                math.to_radians(DirToRot[beltDir.to]),
+                {1, 1, 1, alpha}
+            )
+        }
+    }
+
     for tile, idx in gameState.level.grid {
-        if tile.beltDir == {} {
-            continue
+
+        if tile.beltDir != {} {
+            DrawBelt(tile.beltDir, tile.worldPos, 1)
+        }
+        else if splitter, ok := tile.splitter.?; ok {
+            dm.DrawSprite(
+                gameState.splitterSprite,
+                tile.worldPos,
+                math.to_radians(DirToRot[ReverseDir[splitter.inDir]])
+            )
+        }
+        else if merger, ok := tile.merger.?; ok {
+            dm.DrawSprite(
+                gameState.mergerSprite,
+                tile.worldPos,
+                math.to_radians(DirToRot[tile.beltDir.from])
+            )
         }
 
-        dm.DrawWorldRect(
-            dm.renderCtx.whiteTexture,
-            tile.worldPos,
-            {0.5, 0.9},
-            rotation = math.to_radians(DirToRot[tile.beltDir.from]),
-            color = {0, 0.1, 0.8, 0.9},
-            pivot = {0, 0.5}
-        )
-
-        dm.DrawWorldRect(
-            dm.renderCtx.whiteTexture,
-            tile.worldPos,
-            {0.5, 0.9},
-            rotation = math.to_radians(DirToRot[tile.beltDir.to]),
-            color = {0.8, 0.1, 0, 0.9},
-            pivot = {0, 0.5}
-        )
 
         if next, ok := tile.nextTile.?; ok {
             posA := tile.worldPos
@@ -670,13 +813,54 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
     }
 
-    // Items 
+    // Draw Items 
     it := dm.MakePoolIter(&gameState.spawnedItems)
     for item in dm.PoolIterate(&it) {
         dm.DrawBlankSprite(item.position, {0.8, 0.8})
     }
 
-    // Placing building
+    // Draw Placing structures
+    if gameState.buildUpMode != .None {
+
+        playerCoord := WorldPosToCoord(gameState.playerPosition)
+        building := Buildings[gameState.selectedBuildingIdx]
+
+        for y in -BUILDING_DISTANCE..=BUILDING_DISTANCE {
+            for x in -BUILDING_DISTANCE..=BUILDING_DISTANCE {
+
+                coord := playerCoord + iv2{i32(x), i32(y)}
+                if IsInsideGrid(coord) &&
+                    IsInDistance(gameState.playerPosition, coord)
+                {
+
+                    color: dm.color
+                    switch gameState.buildUpMode {
+                    case .Building:
+                        coord := coord - building.size / 2
+                        color = (CanBePlaced(building, coord) ?
+                                           {0, 1, 0, 0.2} :
+                                           {1, 0, 0, 0.2})
+
+                    case .Belt: 
+                        tile := GetTileAtCoord(coord)
+                        color = (tile.building == {} ?
+                                           {0, 0, 1, 0.2} :
+                                           {1, 0, 0, 0.2})
+
+                    case .Destroy:
+                        color = {1, 0, 0, 0.2}
+
+                    case .None:
+                    }
+
+                    dm.DrawBlankSprite(CoordToPos(coord), {1, 1}, color)
+                }
+            }
+        }
+
+        dm.DrawGrid()
+    }
+
     if gameState.buildUpMode == .Building {
         building := Buildings[gameState.selectedBuildingIdx]
         gridPos := MousePosGrid()
@@ -703,33 +887,29 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         )
     }
 
-    // Draw Building Pipe
-    if gameState.buildUpMode == .Pipe {
-        coord := MousePosGrid()
+    // Draw Building Belt
+    if gameState.buildUpMode == .Belt {
+        pos := CoordToPos(MousePosGrid())
 
-        color: dm.color = (IsInDistance(gameState.playerPosition, coord) ?
-                           {0, 0.1, 0.8, 0.5} :
-                           {0.8, 0.1, 0, 0.5})
-
-
-
-        dm.DrawWorldRect(
-            dm.renderCtx.whiteTexture,
-            dm.ToV2(coord) + 0.5,
-            {0.5, 0.9},
-            rotation = math.to_radians(DirToRot[gameState.buildingBeltDir.from]),
-            color = {0, 0.1, 0.8, 0.5},
-            pivot = {0, 0.5}
-        )
-
-        dm.DrawWorldRect(
-            dm.renderCtx.whiteTexture,
-            dm.ToV2(coord) + 0.5,
-            {0.5, 0.9},
-            rotation = math.to_radians(DirToRot[gameState.buildingBeltDir.to]),
-            color = {0.8, 0.1, 0, 0.5},
-            pivot = {0, 0.5}
-        )
+        switch gameState.beltBuildMode {
+        case .Straight: fallthrough
+        case .Angled: 
+            DrawBelt(gameState.buildingBeltDir, pos, 0.4)
+        case .Splitter: 
+            dm.DrawSprite(
+                gameState.splitterSprite, 
+                pos,
+                math.to_radians(DirToRot[gameState.buildingBeltDir.to]),
+                {1, 1, 1, 0.4},
+            )
+        case .Merger:
+            dm.DrawSprite(
+                gameState.mergerSprite, 
+                pos,
+                math.to_radians(DirToRot[gameState.buildingBeltDir.to]),
+                {1, 1, 1, 0.4},
+            )
+        }
     }
 
     // Destroying
@@ -742,47 +922,6 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
     }
 
-    // Building Range
-    if gameState.buildUpMode != .None {
-
-        playerCoord := WorldPosToCoord(gameState.playerPosition)
-        building := Buildings[gameState.selectedBuildingIdx]
-
-        for y in -BUILDING_DISTANCE..=BUILDING_DISTANCE {
-            for x in -BUILDING_DISTANCE..=BUILDING_DISTANCE {
-
-                coord := playerCoord + iv2{i32(x), i32(y)}
-                if IsInsideGrid(coord) &&
-                    IsInDistance(gameState.playerPosition, coord)
-                {
-
-                    color: dm.color
-                    switch gameState.buildUpMode {
-                    case .Building:
-                        coord := coord - building.size / 2
-                        color = (CanBePlaced(building, coord) ?
-                                           {0, 1, 0, 0.2} :
-                                           {1, 0, 0, 0.2})
-
-                    case .Pipe: 
-                        tile := GetTileAtCoord(coord)
-                        color = (tile.building == {} ?
-                                           {0, 0, 1, 0.2} :
-                                           {1, 0, 0, 0.2})
-
-                    case .Destroy:
-                        color = {1, 0, 0, 0.2}
-
-                    case .None:
-                    }
-
-                    dm.DrawBlankSprite(CoordToPos(coord), {1, 1}, color)
-                }
-            }
-        }
-
-        dm.DrawGrid()
-    }
 
     // Player
     dm.DrawSprite(gameState.playerSprite, gameState.playerPosition)

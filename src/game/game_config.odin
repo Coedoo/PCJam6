@@ -14,11 +14,11 @@ START_MONEY :: 1000
 
 PRODUCTION_BASE :: 1
 
-ITEM_SIZE :: 1
+ITEM_SIZE :: 0.7
 ITEM_SPEED :: 10
 
 MAX_INPUTS :: 3
-INPUT_MAX_ITEMS :: 50
+INPUT_MAX_ITEMS :: 10
 
 VALIDATION_MODE_DURATION :: 10
 
@@ -73,7 +73,7 @@ Buildings := [?]Building {
 
         maxStorage = 20,
         producedItem= .Candy,
-        productionRate = 10,
+        productionRate = 1,
 
         cost = 100,
 

@@ -28,6 +28,9 @@ Tile :: struct {
 
     isInput: bool,
     inputIndex: int,
+
+    splitter: Maybe(Splitter),
+    merger: Maybe(Merger),
 }
 
 TileStartingValues :: struct {
@@ -572,55 +575,3 @@ CalculatePath :: proc(start, goal: iv2, traversalPredicate: TileTraversalPredica
 
     return nil
 }
-
-PlaceBelt :: proc(coord: iv2, dir: BeltDir) -> ^Tile {
-    tile := GetTileAtCoord(coord)
-    if tile == nil {
-        return nil
-    }
-
-    tile.beltDir = dir
-
-    dirVec := DirToVec[dir.to]
-    nextTile := GetTileAtCoord(coord + dirVec)
-    if nextTile != nil && 
-       nextTile.beltDir.from == ReverseDir[dir.to]
-    {
-        tile.nextTile = coord + dirVec
-    }
-
-    dirVec = DirToVec[dir.from]
-    prevTile := GetTileAtCoord(coord + dirVec)
-    if prevTile != nil && 
-       prevTile.beltDir.to == ReverseDir[dir.from]
-    {
-        prevTile.nextTile = coord
-    }
-
-    return tile
-}
-
-DestroyBelt :: proc(tile: ^Tile) {
-    tile.beltDir = {}
-    tile.nextTile = nil
-
-    for x in -1..=1 {
-        for y in -1..=1 {
-            if x == 0 && y == 0 {
-                continue
-            }
-
-            otherTile := GetTileAtCoord(tile.gridPos + {i32(x), i32(y)})
-            if otherTile == nil {
-                continue
-            }
-
-            if otherTile.nextTile == tile.gridPos {
-                // fmt.println("AAAAAAAAA")
-                otherTile.nextTile = nil
-            }
-        }
-    }
-
-}
-

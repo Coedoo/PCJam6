@@ -47,7 +47,7 @@ CheckItemCollision :: proc(pos: v2, excludeHandle: ItemHandle) -> bool {
             continue
         }
 
-        collision := dm.CheckCollisionCircles(pos, 0.5, item.position, 0.5)
+        collision := dm.CheckCollisionCircles(pos, ITEM_SIZE / 2, item.position, ITEM_SIZE / 2)
         if collision {
             return true
         }
