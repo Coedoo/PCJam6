@@ -34,7 +34,7 @@ Buildings := [?]Building {
     {
         name = "Container",
         spriteName = "buildings.png",
-        spriteRect = {0, 0, 32, 32},
+        spriteRect = {0, 0, 48, 48},
 
         size = {3, 3},
 
@@ -51,7 +51,7 @@ Buildings := [?]Building {
     {
         name = "Factory 1",
         spriteName = "buildings.png",
-        spriteRect = {0, 0, 32, 32},
+        spriteRect = {0, 0, 48, 48},
 
         size = {3, 3},
 
@@ -67,7 +67,7 @@ Buildings := [?]Building {
     {
         name = "Factory 2",
         spriteName = "buildings.png",
-        spriteRect = {32, 0, 32, 32},
+        spriteRect = {48, 0, 48, 48},
 
         size = {3, 3},
 
@@ -87,7 +87,7 @@ Buildings := [?]Building {
     {
         name = "Factory 3",
         spriteName = "buildings.png",
-        spriteRect = {32, 0, 32, 32},
+        spriteRect = {48 * 2, 0, 48, 48},
 
         size = {3, 3},
 

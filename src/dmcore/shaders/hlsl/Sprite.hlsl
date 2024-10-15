@@ -41,7 +41,7 @@ pixel vs_main(uint spriteId: SV_INSTANCEID, uint vertexId : SV_VERTEXID) {
     float2 anchor = sp.pivot * sp.size;
     anchor = float2(-anchor.x, anchor.y);
     float4 pos = float4(anchor, anchor + float2(sp.size.x, -sp.size.y));
-    float4 tex = float4(sp.texPos + 0.5, sp.texPos + sp.texSize - 0.5);
+    float4 tex = float4(sp.texPos, sp.texPos + sp.texSize);
 
     uint2 i = { vertexId & 2, (vertexId << 1 & 2) ^ 3 };
 
@@ -54,7 +54,10 @@ pixel vs_main(uint spriteId: SV_INSTANCEID, uint vertexId : SV_VERTEXID) {
     p.pos = mul(VPMat, float4(tp, 0, 1));
     p.pos.xyz /= p.pos.w;
     // p.uv  = float2(tex[i.x], tex[i.y]) * oneOverAtlasSize;
-    p.uv  = float2(tex[i.x], tex[i.y]);
+
+    float2 uv = float2(tex[i.x], tex[i.y]);
+    uv = floor(uv) + min(frac(uv) / fwidth(uv), 1) - 0.5;
+    p.uv  = uv;
 
     p.color = sp.color;
 

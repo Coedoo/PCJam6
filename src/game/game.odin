@@ -21,13 +21,13 @@ BuildUpMode :: enum {
 }
 
 BeltBuildMode :: enum {
-    Straight,
-    Angled,
+    Belt,
     Splitter,
     Merger,
 }
 
 GameStage :: enum {
+    VN,
     Build,
     Validation,
     ValidationResult,
@@ -65,16 +65,20 @@ GameState :: struct {
 
         validationTimer: f32,
         validationResult: [Item]int,
+
+        challengeIdx: int,
+        challengeMessageIdx: int,
     },
 
     playerSprite: dm.Sprite,
     arrowSprite: dm.Sprite,
 
-    straightBeltSprite: dm.Sprite,
-    angledBeltSprite: dm.Sprite,
+    itemsSprites: [Item]dm.Sprite,
 
     splitterSprite: dm.Sprite,
     mergerSprite: dm.Sprite,
+
+    beltsSprites: map[BeltDir]dm.Sprite,
 }
 
 gameState: ^GameState
@@ -106,11 +110,14 @@ PreGameLoad : dm.PreGameLoad : proc(assets: ^dm.Assets) {
     dm.RegisterAsset("PCJam6.ldtk", dm.RawFileAssetDescriptor{})
     dm.RegisterAsset("kenney_tilemap.png", dm.TextureAssetDescriptor{})
     dm.RegisterAsset("buildings.png", dm.TextureAssetDescriptor{})
-    dm.RegisterAsset("turret_test_4.png", dm.TextureAssetDescriptor{})
-    dm.RegisterAsset("Energy.png", dm.TextureAssetDescriptor{})
 
-    dm.RegisterAsset("ship.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("Jelly.png", dm.TextureAssetDescriptor{})
     dm.RegisterAsset("belts.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("items.png", dm.TextureAssetDescriptor{})
+
+    dm.RegisterAsset("Jelly_VN_Normal.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("Jelly_VN_Thinking.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("Jelly_VN_NotLikeThis.png", dm.TextureAssetDescriptor{})
 
 
     dm.platform.SetWindowSize(1200, 900)
@@ -131,8 +138,10 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     mem.arena_init(&gameState.levelArena, levelMem)
     gameState.levelAllocator = mem.arena_allocator(&gameState.levelArena)
 
-    gameState.playerSprite = dm.CreateSprite(dm.GetTextureAsset("ship.png"))
+    gameState.playerSprite = dm.CreateSprite(dm.GetTextureAsset("Jelly.png"), dm.RectInt{0, 0, 32, 33})
     gameState.playerSprite.scale = 2
+    gameState.playerSprite.frames = 4
+    gameState.playerSprite.animDirection = .Horizontal
 
     gameState.levels = LoadLevels()
     OpenLevel(START_LEVEL)
@@ -141,12 +150,35 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     gameState.arrowSprite.scale = 0.4
     gameState.arrowSprite.origin = {0, 0.5}
 
-    beltsTex := dm.GetTextureAsset("belts.png")
-    gameState.straightBeltSprite = dm.CreateSprite(beltsTex, dm.RectInt{0,  0, 16, 16})
-    gameState.angledBeltSprite   = dm.CreateSprite(beltsTex, dm.RectInt{16, 0, 16, 16})
 
+    itemsTex := dm.GetTextureAsset("items.png")
+    gameState.itemsSprites = {
+        .None = {},
+        .Sugar       = dm.CreateSprite(itemsTex, dm.RectInt{0,  0, 16, 16}),
+        .Candy       = dm.CreateSprite(itemsTex, dm.RectInt{16, 0, 16, 16}),
+        .BiggerCandy = dm.CreateSprite(itemsTex, dm.RectInt{0, 16, 16, 16}),
+    }
+
+    beltsTex := dm.GetTextureAsset("belts.png")
     gameState.splitterSprite = dm.CreateSprite(beltsTex, dm.RectInt{0, 16, 16, 16})
     gameState.mergerSprite = dm.CreateSprite(beltsTex, dm.RectInt{16, 16, 16, 16})
+
+    gameState.beltsSprites[{.West, .East}]   = dm.CreateSprite(beltsTex, dm.RectInt{0,  0, 16, 16})
+    gameState.beltsSprites[{.East, .West}]   = dm.CreateSprite(beltsTex, dm.RectInt{0,  0, 16, 16}, flipX = true)
+    gameState.beltsSprites[{.South, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{16, 0, 16, 16})
+    gameState.beltsSprites[{.North, .South}] = dm.CreateSprite(beltsTex, dm.RectInt{16, 0, 16, 16}, flipY = true)
+
+    gameState.beltsSprites[{.South, .East}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 0, 16, 16})
+    gameState.beltsSprites[{.South, .West}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 0, 16, 16}, flipX = true)
+
+    gameState.beltsSprites[{.West, .South}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 0, 16, 16})
+    gameState.beltsSprites[{.East, .South}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 0, 16, 16}, flipX = true)
+
+    gameState.beltsSprites[{.North, .East}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 16, 16, 16})
+    gameState.beltsSprites[{.North, .West}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 16, 16, 16}, flipX = true)
+
+    gameState.beltsSprites[{.East, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16})
+    gameState.beltsSprites[{.West, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16}, flipX = true)
 }
 
 @(export)
@@ -154,6 +186,7 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
     gameState = cast(^GameState) state
 
     switch gameState.stage {
+        case .VN: VNModeUpdate(); return
         case .Build: BuildingModeUpdate()
         case .Validation: ValidationModeUpdate()
         case .ValidationResult: ValidationResultUpdate()
@@ -206,18 +239,89 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
     }
 }
 
+VNModeUpdate :: proc() {
+    if dm.GetMouseButton(.Left) == .JustReleased {
+        gameState.challengeMessageIdx += 1
+        if gameState.challengeMessageIdx >= len(Challanges[gameState.challengeIdx].messages) {
+            gameState.stage = .Build
+        }
+    }
+
+    dm.renderCtx.camera.position.xy = cast([2]f32) gameState.playerPosition
+}
+
 BuildingModeUpdate :: proc() {
     cursorOverUI := dm.muiIsCursorOverUI(dm.mui, dm.input.mousePos)
 
     // Move Player
-    moveVec := v2{
+    inputVec := v2{
         dm.GetAxis(.A, .D),
         dm.GetAxis(.S, .W)
     }
 
-    if moveVec != {0, 0} {
-        moveVec = glsl.normalize(moveVec)
-        gameState.playerPosition += moveVec * PLAYER_SPEED * f32(dm.time.deltaTime)
+    if inputVec != {0, 0} {
+        moveVec := glsl.normalize(inputVec)
+
+        CheckCollision :: proc(moveVec: v2) -> bool {
+            newPos := gameState.playerPosition + moveVec * PLAYER_SPEED * f32(dm.time.deltaTime)
+            playerBounds := dm.Bounds2D{
+                newPos.x - 1, newPos.x + 1,
+                newPos.y - 1, newPos.y + 1,
+            }
+
+            isColliding: bool
+            it := dm.MakePoolIter(&gameState.spawnedBuildings)
+            for building in dm.PoolIterate(&it) {
+                data := Buildings[building.dataIdx]
+                buildingBounds := dm.Bounds2D{
+                    f32(building.gridPos.x), f32(building.gridPos.x + data.size.x),
+                    f32(building.gridPos.y), f32(building.gridPos.y + data.size.y),
+                }
+
+                coll := dm.CheckCollisionBounds(playerBounds, buildingBounds)
+                if coll {
+                    return true
+                }
+            }
+
+            return false
+        }
+
+        isColliding: [2]bool = {true, true}
+        if moveVec.x != 0 && CheckCollision({moveVec.x, 0}) == false {
+            gameState.playerPosition += v2{moveVec.x, 0} * PLAYER_SPEED * f32(dm.time.deltaTime)
+            isColliding.x = false
+        }
+        if moveVec.y != 0 && CheckCollision({0, moveVec.y}) == false {
+            gameState.playerPosition += v2{0, moveVec.y} * PLAYER_SPEED * f32(dm.time.deltaTime)
+            isColliding.y = false
+        }
+
+        if isColliding.x == false || isColliding.y == false {
+            if inputVec.y == -1 {
+                gameState.playerSprite.texturePos.y = 0
+                gameState.playerSprite.flipX = false
+            }
+            else if inputVec.y == 1 {
+                gameState.playerSprite.texturePos.y = 32
+                gameState.playerSprite.flipX = false
+            }
+            else if inputVec.x == -1 {
+                gameState.playerSprite.texturePos.y = 64
+                gameState.playerSprite.flipX = false
+            }
+            else {
+                gameState.playerSprite.texturePos.y = 64
+                gameState.playerSprite.flipX = true
+            }
+
+            dm.AnimateSprite(&gameState.playerSprite, f32(dm.time.gameTime), 0.2)
+            // fmt.println("FUCK")
+        }
+    }
+    else {
+        gameState.playerSprite.currentFrame = 0
+        // fmt.println(dm.time.frame, gameState.playerSprite.texturePos.x)
     }
 
     // Camera Control
@@ -281,8 +385,7 @@ BuildingModeUpdate :: proc() {
 
                 if canPlace {
                     switch gameState.beltBuildMode {
-                    case .Straight: fallthrough
-                    case .Angled: 
+                    case .Belt: 
                         PlaceBelt(coord, gameState.buildingBeltDir)
                     case .Splitter:
                         PlaceSplitter(tile)
@@ -303,11 +406,11 @@ BuildingModeUpdate :: proc() {
         }
 
         if dm.GetKeyState(.Num1) == .JustPressed {
-            gameState.beltBuildMode = .Straight
+            gameState.beltBuildMode = .Belt
             gameState.buildingBeltDir.from = ReverseDir[gameState.buildingBeltDir.to]
         }
         if dm.GetKeyState(.Num2) == .JustPressed {
-            gameState.beltBuildMode = .Angled
+            gameState.beltBuildMode = .Belt
             gameState.buildingBeltDir.from = NextDir[gameState.buildingBeltDir.to]
         }
         if dm.GetKeyState(.Num3) == .JustPressed {
@@ -351,81 +454,141 @@ BuildingModeUpdate :: proc() {
         }
     }
 
-    // temp UI
-    if dm.muiBeginWindow(dm.mui, "GAME MENU", {10, 10, 110, 450}) {
-        dm.muiLabel(dm.mui, gameState.selectedTile)
+    if dm.muiBeginWindow(dm.mui, "MAIN GUI", {10, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE}) {
         dm.muiLabel(dm.mui, "Money:", gameState.money)
-
-        for b, idx in Buildings {
-            if dm.muiButton(dm.mui, b.name) {
-                gameState.selectedBuildingIdx = idx
-                gameState.buildUpMode = .Building
-            }
+        if dm.muiButton(dm.mui, "Build Building") {
+            gameState.buildUpMode = .Building
         }
 
-        // dm.muiLabel(dm.mui, "Pipes:")
-        if dm.muiButton(dm.mui, "Belt") {
+        if dm.muiButton(dm.mui, "Build Belt") {
             gameState.buildUpMode = .Belt
-            gameState.beltBuildMode = .Straight
-            gameState.buildingBeltDir = {.West, .East}
         }
 
-        // if dm.muiButton(dm.mui, "Angled") {
-        //     gameState.buildUpMode = .Belt
-        //     gameState.buildingBeltDir = {.South, .East}
-        // }
-
-        dm.muiLabel(dm.mui)
-        if dm.muiButton(dm.mui, "Destroy") {
-            gameState.buildUpMode = .Destroy
+        dm.muiLabel(dm.mui, "")
+        if dm.muiHeader(dm.mui, "Level goals") {
+            dm.muiLabel(dm.mui, "TBD")
         }
 
-        if dm.muiButton(dm.mui, "Reset level") {
-            name := gameState.level.name
-            OpenLevel(name)
-        }
-
-        dm.muiLabel(dm.mui, "LEVELS:")
-        for l in gameState.levels {
-            if dm.muiButton(dm.mui, l.name) {
-                OpenLevel(l.name)
-            }
-        }
-
-        dm.muiLabel(dm.mui, "MEMORY")
-        dm.muiLabel(dm.mui, "\tLevel arena HWM:", gameState.levelArena.peak_used / mem.Kilobyte, "kb")
-        dm.muiLabel(dm.mui, "\tLevel arena used:", gameState.levelArena.offset / mem.Kilobyte, "kb")
-
-        if dm.muiButton(dm.mui, "START VALIDATION") {
+        if dm.muiButton(dm.mui, "CHECK SOLUTION") {
             StartValidation()
         }
 
         dm.muiEndWindow(dm.mui)
     }
 
-    if gameState.buildUpMode != .None {
-        size := iv2{
-            100, 60
+
+    if gameState.buildUpMode == .Building {
+        if dm.muiBeginWindow(dm.mui, "BUILDINGS", {190, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE }) {
+            dm.muiLabel(dm.mui, "Buildings:")
+            for b, idx in Buildings {
+                if dm.muiButton(dm.mui, fmt.tprintf("%v - %v", idx + 1, b.name)) {
+                    gameState.selectedBuildingIdx = idx
+                }
+            }
+            dm.muiEndWindow(dm.mui)
         }
+    }
 
-        pos := iv2{
-            dm.renderCtx.frameSize.x / 2 - size.x / 2,
-            dm.renderCtx.frameSize.y - 100,
-        }
+    if gameState.buildUpMode == .Belt {
+        if dm.muiBeginWindow(dm.mui, "BELTS", {190, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE}) {
+            dm.muiLabel(dm.mui, "Belts:")
+            if dm.muiButton(dm.mui, "1 - Belt") {
+                gameState.beltBuildMode = .Belt
+                gameState.buildingBeltDir = {.West, .East}
+            }
+            
+            if dm.muiButton(dm.mui, "2 - Angled") {
+                gameState.beltBuildMode = .Belt
+                gameState.buildingBeltDir = {.South, .East}
+            }
 
-        if dm.muiBeginWindow(dm.mui, "Current Mode", {pos.x, pos.y, size.x, size.y}, 
-            {.NO_CLOSE, .NO_RESIZE})
-        {
-            label := gameState.buildUpMode == .Building ? "Building" :
-                     gameState.buildUpMode == .Belt     ? "Belt" :
-                     gameState.buildUpMode == .Destroy  ? "Destroy" :
-                                                          "UNKNOWN MODE"
+            if dm.muiButton(dm.mui, "3 - Splitter") {
+                gameState.beltBuildMode = .Splitter
+            }
 
-            dm.muiLabel(dm.mui, label)
+            if dm.muiButton(dm.mui, "4 - Merger") {
+                gameState.beltBuildMode = .Merger
+            }
 
             dm.muiEndWindow(dm.mui)
         }
     }
+
+    // temp UI
+    // if dm.muiBeginWindow(dm.mui, "GAME MENU", {10, 10, 110, 450}) {
+    //     dm.muiLabel(dm.mui, gameState.selectedTile)
+    //     dm.muiLabel(dm.mui, "Money:", gameState.money)
+
+    //     for b, idx in Buildings {
+    //         if dm.muiButton(dm.mui, b.name) {
+    //             gameState.selectedBuildingIdx = idx
+    //             gameState.buildUpMode = .Building
+    //         }
+    //     }
+
+    //     // dm.muiLabel(dm.mui, "Pipes:")
+    //     if dm.muiButton(dm.mui, "Belt") {
+    //         gameState.buildUpMode = .Belt
+    //         gameState.beltBuildMode = .Straight
+    //         gameState.buildingBeltDir = {.West, .East}
+    //     }
+
+    //     // if dm.muiButton(dm.mui, "Angled") {
+    //     //     gameState.buildUpMode = .Belt
+    //     //     gameState.buildingBeltDir = {.South, .East}
+    //     // }
+
+    //     dm.muiLabel(dm.mui)
+    //     if dm.muiButton(dm.mui, "Destroy") {
+    //         gameState.buildUpMode = .Destroy
+    //     }
+
+    //     if dm.muiButton(dm.mui, "Reset level") {
+    //         name := gameState.level.name
+    //         OpenLevel(name)
+    //     }
+
+    //     dm.muiLabel(dm.mui, "LEVELS:")
+    //     for l in gameState.levels {
+    //         if dm.muiButton(dm.mui, l.name) {
+    //             OpenLevel(l.name)
+    //         }
+    //     }
+
+    //     dm.muiLabel(dm.mui, "MEMORY")
+    //     dm.muiLabel(dm.mui, "\tLevel arena HWM:", gameState.levelArena.peak_used / mem.Kilobyte, "kb")
+    //     dm.muiLabel(dm.mui, "\tLevel arena used:", gameState.levelArena.offset / mem.Kilobyte, "kb")
+
+    //     if dm.muiButton(dm.mui, "START VALIDATION") {
+    //         StartValidation()
+    //     }
+
+    //     dm.muiEndWindow(dm.mui)
+    // }
+
+    // if gameState.buildUpMode != .None {
+    //     size := iv2{
+    //         100, 60
+    //     }
+
+    //     pos := iv2{
+    //         dm.renderCtx.frameSize.x / 2 - size.x / 2,
+    //         dm.renderCtx.frameSize.y - 100,
+    //     }
+
+    //     if dm.muiBeginWindow(dm.mui, "Current Mode", {pos.x, pos.y, size.x, size.y}, 
+    //         {.NO_CLOSE, .NO_RESIZE})
+    //     {
+    //         label := gameState.buildUpMode == .Building ? "Building" :
+    //                  gameState.buildUpMode == .Belt     ? "Belt" :
+    //                  gameState.buildUpMode == .Destroy  ? "Destroy" :
+    //                                                       "UNKNOWN MODE"
+
+    //         dm.muiLabel(dm.mui, label)
+
+    //         dm.muiEndWindow(dm.mui)
+    //     }
+    // }
 }
 
 StartValidation :: proc() {
@@ -596,23 +759,6 @@ ValidationModeUpdate :: proc() {
                     item.position = pos
                 }
             }
-
-
-            // if splitter, ok := tile.splitter.?; ok {
-            //     nextDir := NextDir[splitter.nextOut]
-            //     for i in 0..<4 {
-            //         nextPos := CoordToPos(tile.gridPos + DirToVec[nextDir])
-            //         if CheckItemCollision(nextPos, {}) || nextDir == splitter.inDir {
-            //             nextDir = NextDir[nextDir]
-            //         }
-            //         else {
-            //             break
-            //         }
-            //     }
-
-            //     splitter.nextOut = nextDir
-            //     tile.splitter = splitter
-            // }
         }
     }
 
@@ -643,18 +789,7 @@ ValidationModeUpdate :: proc() {
     }
 
 
-    size := iv2{150, 90}
-    pos := iv2{
-        dm.renderCtx.frameSize.x / 2 - size.x / 2,
-        dm.renderCtx.frameSize.y - 100,
-    }
-    if dm.muiBeginWindow(
-        dm.mui, "VALIDATION", 
-        {pos.x, pos.y, size.x, size.y},
-        {.NO_CLOSE, .NO_RESIZE}
-    )
-    {
-
+    if dm.muiBeginWindow(dm.mui, "VALIDATION", {10, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE}) {
         dm.muiLabel(
             dm.mui, 
             fmt.tprintf("Time: %.2v/%v s", gameState.validationTimer, VALIDATION_MODE_DURATION)
@@ -699,7 +834,7 @@ ValidationResultUpdate :: proc() {
         dm.renderCtx.frameSize.x / 2 - size.x / 2,
         dm.renderCtx.frameSize.y / 2 - size.y / 2,
     }
-    if dm.muiBeginWindow(dm.mui, "RESULT", {pos.x, pos.y, size.x, size.y}, { .NO_CLOSE, .NO_RESIZE, .NO_INTERACT}) {
+    if dm.muiBeginWindow(dm.mui, "RESULT", {pos.x, pos.y, size.x, size.y}, { .NO_TITLE, .NO_RESIZE}) {
         for res, i in gameState.validationResult {
             type := Item(i)
             if type == .None do continue
@@ -742,45 +877,14 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
     }
 
-
-    // Buildings
-    for &building in gameState.spawnedBuildings.elements {
-        // @TODO @CACHE
-        buildingData := &Buildings[building.dataIdx]
-        tex := dm.GetTextureAsset(buildingData.spriteName)
-        sprite := dm.CreateSprite(tex, buildingData.spriteRect)
-        sprite.scale = f32(buildingData.size.x)
-
-        pos := building.position
-        dm.DrawSprite(sprite, pos)
-    }
-
     // Draw Belts
     DrawBelt :: proc(beltDir: BeltDir, pos: v2, alpha: f32) {
-        dirA, dirB := DirToVec[beltDir.from], DirToVec[beltDir.to]
-        dirA = {abs(dirA.x), abs(dirA.y)}
-        dirB = {abs(dirB.x), abs(dirB.y)}
-
-        isStraight := (dirA.x == 1 && dirB.x == 1) || (dirA.y == 1 && dirB.y == 1)
-
-        if isStraight {
+        sprite, ok := gameState.beltsSprites[beltDir]
+        if ok {
             dm.DrawSprite(
-                gameState.straightBeltSprite, 
+                sprite, 
                 pos,
-                math.to_radians(DirToRot[beltDir.to]),
-                {1, 1, 1, alpha}
-            )
-        }
-        else {
-            sprite := gameState.angledBeltSprite
-
-            sprite.flipY = NextDir[beltDir.from] == beltDir.to
-
-            dm.DrawSprite(
-                sprite,
-                pos,
-                math.to_radians(DirToRot[beltDir.to]),
-                {1, 1, 1, alpha}
+                color = {1, 1, 1, alpha}
             )
         }
     }
@@ -816,7 +920,20 @@ GameRender : dm.GameRender : proc(state: rawptr) {
     // Draw Items 
     it := dm.MakePoolIter(&gameState.spawnedItems)
     for item in dm.PoolIterate(&it) {
-        dm.DrawBlankSprite(item.position, {0.8, 0.8})
+        sprite := gameState.itemsSprites[item.type]
+        dm.DrawSprite(sprite, item.position)
+    }
+
+    // draw Buildings
+    for &building in gameState.spawnedBuildings.elements {
+        // @TODO @CACHE
+        buildingData := &Buildings[building.dataIdx]
+        tex := dm.GetTextureAsset(buildingData.spriteName)
+        sprite := dm.CreateSprite(tex, buildingData.spriteRect)
+        sprite.scale = f32(buildingData.size.x)
+
+        pos := building.position
+        dm.DrawSprite(sprite, pos)
     }
 
     // Draw Placing structures
@@ -892,8 +1009,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         pos := CoordToPos(MousePosGrid())
 
         switch gameState.beltBuildMode {
-        case .Straight: fallthrough
-        case .Angled: 
+        case .Belt: 
             DrawBelt(gameState.buildingBeltDir, pos, 0.4)
         case .Splitter: 
             dm.DrawSprite(
@@ -935,6 +1051,40 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
     }
 
+    if gameState.stage == .VN {
+        rectHeight :: 200
+        margin :: 20
 
-    dm.DrawText(dm.renderCtx, "WIP version: 0.0.1 pre-pre-pre-pre-pre-alpha", dm.LoadDefaultFont(dm.renderCtx), {0, f32(dm.renderCtx.frameSize.y - 30)}, 20)
+        centerPos := v2 {
+            f32(dm.renderCtx.frameSize.x) / 2,
+            f32(dm.renderCtx.frameSize.y) - rectHeight / 2 - margin,
+        }
+        width := f32(dm.renderCtx.frameSize.x) - margin * 2
+
+        message := Challanges[gameState.challengeIdx].messages[gameState.challengeMessageIdx]
+        
+        dm.DrawRect(
+            dm.GetTextureAsset(message.imageName),
+            v2{
+                f32(dm.renderCtx.frameSize.x) - 200,
+                centerPos.y
+            },
+            scale = 1.5
+        )
+
+        dm.DrawRect(centerPos, v2{width, rectHeight}, color = dm.color{0, 0, 0, 0.6})
+        dm.DrawTextCentered(
+            dm.renderCtx,
+            message.message,
+            dm.LoadDefaultFont(dm.renderCtx),
+            centerPos, 40)
+
+        dm.DrawTextCentered(
+            dm.renderCtx,
+            "Click To continue",
+            dm.LoadDefaultFont(dm.renderCtx),
+            v2{centerPos.x, f32(dm.renderCtx.frameSize.y) - margin - 20},
+            15,
+            color = {0.4, 0.4, 0.4, 0.8})
+    }
 }

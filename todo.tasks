@@ -1,18 +1,22 @@
 
 
- ☐ Belt sprites
+ ✔ Belt sprites @done (24-10-13 22:30)
  ☐ Splitters/Merger
- ☐ Levels
-   ☐ level tasks
+   ☐ Fix Mergers
+ ☐ Challanges
+   ☐ Tasks targets
+   ☐ Task time
    ☐ handle task fail
-   ☐ dialogs
+   ✔ dialogs @done (24-10-15 22:23)
    ☐ finishing and moving to next level
    ☐ scores and switch between levels?
 
+ ☐ Make player collider smaller so it can look like she is in front a building
+ ☐ Containers should have unlimited (?) storage and can store different types of items
+
+
  ☐ Tutorials
  ☐ game save
-
-
 
  ✔ Colored pipe directions / sprites @done (24-10-12 13:02)
  ✔ Building inputs @done (24-10-12 13:02)

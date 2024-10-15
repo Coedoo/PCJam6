@@ -70,7 +70,7 @@ muiLayoutRow :: proc(mui: ^Mui, widths: []i32, height: i32 = 0) {
 muiBeginWindow :: proc(using mui: ^Mui, label: string, rect: mu.Rect, options: mu.Options = {}) -> (ret: bool) {
     ret = mu.begin_window(&muiCtx, label, rect, options)
     if ret {
-        mu.layout_row(&muiCtx, {-1}, 13)
+        mu.layout_row(&muiCtx, {-1})
     }
 
     return ret
