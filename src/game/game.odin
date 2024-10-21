@@ -488,7 +488,7 @@ BuildingModeUpdate :: proc() {
                     dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("belt_place.wav"));
                 }
 
-                fmt.println("skjdflsdk");
+                // fmt.println("skjdflsdk");
             }
 
             prevCoord = coord
@@ -961,8 +961,7 @@ ValidationResultUpdate :: proc() {
             if gameState.challengeIdx < len(Challenges) - 1 {
                 if dm.muiButton(dm.mui, "Next Level") {
                     gameState.challengeIdx += 1
-                    gameState.challengeMessageIdx = 0
-                    gameState.stage = .VN
+                    StartChallenge()
                 }
             }
             else {
@@ -1048,7 +1047,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
             dm.DrawSprite(
                 gameState.mergerSprite,
                 tile.worldPos,
-                math.to_radians(DirToRot[tile.beltDir.from])
+                math.to_radians(DirToRot[merger.outDir])
             )
         }
 
