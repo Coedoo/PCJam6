@@ -78,7 +78,7 @@ TileTypeColor := #sparse [TileType]dm.color {
 /////
 
 LoadLevels :: proc() -> (levels: []Level) {
-    tilesHandle := dm.GetTextureAsset("kenney_tilemap.png")
+    tilesHandle := dm.GetTextureAsset("tiles.png")
     // levelAsset := LevelAsset
 
     ldtkFile := dm.GetAssetData("PCJam6.ldtk")
@@ -109,7 +109,7 @@ LoadLevels :: proc() -> (levels: []Level) {
         for layer in loadedLevel.layer_instances {
             yOffset := layer.c_height * layer.grid_size
 
-            if layer.identifier == "Base" {
+            if layer.identifier == "Tiles" {
                 tiles := layer.type == .Tiles ? layer.grid_tiles : layer.auto_layer_tiles
                 level.grid = make([]Tile, layer.c_width * layer.c_height)
 
@@ -138,88 +138,21 @@ LoadLevels :: proc() -> (levels: []Level) {
                         dm.RectInt{i32(tile.src.x), i32(tile.src.y), PixelsPerTile, PixelsPerTile}
                     )
 
-                    coord := tile.px / layer.grid_size
+                    tilemapPos := tile.px / layer.grid_size
                     // reverse the axis because LDTK Y axis goes down
-                    coord.y = int(level.sizeY) - coord.y - 1
+                    tilemapPos.y = int(level.sizeY) - tilemapPos.y - 1
 
-                    idx := coord.y * int(level.sizeX) + coord.x
-                    level.grid[idx].sprite = sprite
-                }
-            }
-            else if layer.identifier == "Entities" {
-                if level.startingState == nil {
-                    level.startingState = make([]TileStartingValues, layer.c_width * layer.c_height)
-                }
+                    idx := tilemapPos.y * int(level.sizeX) + tilemapPos.x
+                    // level.grid[idx].sprite = sprite
 
-                for entity in layer.entity_instances {
-                    coord := iv2{i32(entity.grid.x), i32(entity.grid.y)}
-                    coord.y = level.sizeY - coord.y - 1
-
-                    switch entity.identifier {
-                    case "StartPoint": level.startCoord = coord; continue
-                    case "EndPoint": level.endCoord = coord; continue
+                    coord := iv2{i32(tilemapPos.x), i32(tilemapPos.y)}
+                    level.grid[idx] = Tile {
+                        gridPos = iv2{i32(coord.x), i32(coord.y)},
+                        worldPos = CoordToPos(coord),
+                        // type = cast(TileType) type,
+                        sprite = sprite,
                     }
-
-                    buildingIdx, ok := buildingsNameCache[entity.identifier]
-                    if ok == false {
-                        newIdentifier, _ := strings.replace_all(entity.identifier, "_", " ", context.temp_allocator)
-                        for building, i in Buildings {
-                            if building.name == newIdentifier {
-                                buildingsNameCache[entity.identifier] = i
-                                buildingIdx = i
-                                break
-                            }
-                        }
-                    }
-
-                    idx := coord.y * level.sizeX + coord.x
-                    level.startingState[idx].buildingIdx = buildingIdx
-                    level.startingState[idx].hasBuilding = true
-
-                    fmt.println("Adding", entity.identifier, "At:", coord)
                 }
-            }
-            else if layer.identifier == "Pipes" {
-                if level.startingState == nil {
-                    level.startingState = make([]TileStartingValues, layer.c_width * layer.c_height)
-                }
-
-                tilesetID, ok := layer.tileset_def_uid.?
-                if ok == false {
-                    fmt.println("Pipes layer doesn't have specified tileset ID!")
-                    continue
-                }
-
-                // tileset := FindTilesetDefinition(project, tilesetID)
-                // tileIDToDir := make(map[int]DirectionSet)
-                // for enumTag in tileset.enum_tags {
-                //     dir: DirectionSet
-                //     switch enumTag.enum_value_id {
-                //     case "NS": dir = { .North, .South }
-                //     case "WE": dir = { .West, .East }
-                //     case "NE": dir = { .North, .East }
-                //     case "NW": dir = { .North, .West }
-                //     case "SE": dir = { .South, .East }
-                //     case "SW": dir = { .South, .West }
-                //     case "NWE": dir = { .North, .West, .East }
-                //     case "SWE": dir = { .South, .West, .East }
-                //     case "NWS": dir = { .North, .West, .South }
-                //     case "NES": dir = { .North, .East, .South }
-                //     case "NWSE": dir = { .North, .West, .South, .East }
-                //     }
-
-                //     for id in enumTag.tile_ids {
-                //         tileIDToDir[id] = dir
-                //     }
-                // }
-
-                // for tile, i in layer.grid_tiles {
-                //     coord := tile.px / layer.grid_size
-                //     // reverse the axis because LDTK Y axis goes down
-                //     coord.y = int(level.sizeY) - coord.y - 1
-                //     idx := coord.y * int(level.sizeX) + coord.x
-                //     level.startingState[idx].beltDir = tileIDToDir[tile.t]
-                // }
             }
             else {
                 fmt.eprintln("Unhandled level layer:", layer.identifier)
@@ -242,10 +175,6 @@ OpenLevel :: proc(name: string) {
     dm.InitResourcePool(&gameState.spawnedBuildings, 128)
     dm.InitResourcePool(&gameState.spawnedItems, 512)
 
-    pathMem := make([]byte, PATH_MEMORY)
-    // mem.arena_init(&gameState.pathArena, pathMem)
-    // gameState.pathAllocator = mem.arena_allocator(&gameState.pathArena)
-
     gameState.level = nil
     for &l in gameState.levels {
         if l.name == name {
@@ -256,17 +185,14 @@ OpenLevel :: proc(name: string) {
 
     //@TODO: it would be better to start test level in this case
     assert(gameState.level != nil, fmt.tprintf("Failed to start level of name:", name))
-
-    gameState.money = START_MONEY
-
     gameState.playerPosition = dm.ToV2(iv2{gameState.level.sizeX, gameState.level.sizeY}) / 2
 
 
-    for &tile, i in gameState.level.grid {
-        if gameState.level.startingState[i].hasBuilding {
-            TryPlaceBuilding(gameState.level.startingState[i].buildingIdx, tile.gridPos)
-        }
-    }
+    // for &tile, i in gameState.level.grid {
+    //     if gameState.level.startingState[i].hasBuilding {
+    //         TryPlaceBuilding(gameState.level.startingState[i].buildingIdx, tile.gridPos)
+    //     }
+    // }
 
 }
 
@@ -380,6 +306,23 @@ GetNeighbourTiles :: proc(coord: iv2, allocator := context.allocator) -> []^Tile
 ////////////////////
 
 CanBePlaced :: proc(building: Building, coord: iv2) -> bool {
+    pos := gameState.playerPosition + PLAYER_COLL_OFFSET
+    playerBounds := dm.Bounds2D{
+        pos.x - PLAYER_COLL_SIZE.x / 2, pos.x + PLAYER_COLL_SIZE.x / 2,
+        pos.y - PLAYER_COLL_SIZE.y / 2, pos.y + PLAYER_COLL_SIZE.y / 2,
+    }
+
+    buildingPos := dm.ToV2(coord)
+    buildingBounds := dm.Bounds2D{
+        buildingPos.x, buildingPos.x + f32(building.size.x),
+        buildingPos.y, buildingPos.y + f32(building.size.y),
+    }
+    coll := dm.CheckCollisionBounds(playerBounds, buildingBounds)
+
+    if coll {
+        return false
+    }
+
     for y in 0..<building.size.y {
         for x in 0..<building.size.x {
             pos := coord + {x, y}
@@ -455,6 +398,8 @@ PlaceBuilding :: proc(buildingIdx: int, gridPos: iv2) {
         tile.isInput = true
         tile.inputIndex = i
     }
+
+    dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("building_place.wav"));
 }
 
 
@@ -472,10 +417,14 @@ RemoveBuilding :: proc(building: BuildingHandle) {
             if tile.beltDir != {} {
                 DestroyBelt(tile)
             }
+
+            tile.isInput = false
         }
     }
 
     dm.FreeSlot(&gameState.spawnedBuildings, building)
+
+    RefreshMoney()
 }
 
 TileTraversalPredicate :: #type proc(currentTile: Tile, neighbor: Tile, goal: iv2) -> bool

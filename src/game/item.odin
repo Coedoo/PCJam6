@@ -11,7 +11,12 @@ Item :: enum {
     None,
     Sugar,
     Candy,
-    BiggerCandy,
+    Flour,
+    CoffeeBean,
+    Chocolate,
+    Cookie,
+    StarCandy,
+    PhaseCoffee,
 }
 
 ItemHandle :: distinct dm.Handle
@@ -23,6 +28,8 @@ ItemInstance :: struct {
     position: v2,
 
     nextTile: iv2,
+
+    waitingForMerger: bool,
 }
 
 ItemCount :: struct {
@@ -31,13 +38,6 @@ ItemCount :: struct {
 }
 
 ItemRecipe :: distinct []ItemCount
-
-Recipes := [Item]ItemRecipe {
-    .None = {},
-    .Sugar = {},
-    .Candy = {{.Sugar, 5}},
-    .BiggerCandy = {{.Sugar, 3}, {.Candy, 2}},
-}
 
 CheckItemCollision :: proc(pos: v2, excludeHandle: ItemHandle) -> bool {
     it := dm.MakePoolIter(&gameState.spawnedItems)

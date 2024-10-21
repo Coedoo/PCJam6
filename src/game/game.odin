@@ -31,6 +31,7 @@ GameStage :: enum {
     Build,
     Validation,
     ValidationResult,
+    FinalMessage,
 }
 
 GameState :: struct {
@@ -65,9 +66,12 @@ GameState :: struct {
 
         validationTimer: f32,
         validationResult: [Item]int,
+        challengeCompleted: bool,
 
         challengeIdx: int,
         challengeMessageIdx: int,
+    
+        showLevelSelect: bool,
     },
 
     playerSprite: dm.Sprite,
@@ -108,17 +112,22 @@ PreGameLoad : dm.PreGameLoad : proc(assets: ^dm.Assets) {
     // dm.RegisterAsset("testTex.png", dm.TextureAssetDescriptor{})
 
     dm.RegisterAsset("PCJam6.ldtk", dm.RawFileAssetDescriptor{})
-    dm.RegisterAsset("kenney_tilemap.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("tiles.png", dm.TextureAssetDescriptor{})
     dm.RegisterAsset("buildings.png", dm.TextureAssetDescriptor{})
 
-    dm.RegisterAsset("Jelly.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("Jelly_.png", dm.TextureAssetDescriptor{})
     dm.RegisterAsset("belts.png", dm.TextureAssetDescriptor{})
     dm.RegisterAsset("items.png", dm.TextureAssetDescriptor{})
 
-    dm.RegisterAsset("Jelly_VN_Normal.png", dm.TextureAssetDescriptor{})
-    dm.RegisterAsset("Jelly_VN_Thinking.png", dm.TextureAssetDescriptor{})
-    dm.RegisterAsset("Jelly_VN_NotLikeThis.png", dm.TextureAssetDescriptor{})
+    dm.RegisterAsset("Jelly_VN_Normal.png",      dm.TextureAssetDescriptor{.Bilinear})
+    dm.RegisterAsset("Jelly_VN_Thinking.png",    dm.TextureAssetDescriptor{.Bilinear})
+    dm.RegisterAsset("Jelly_VN_Thinking2.png",    dm.TextureAssetDescriptor{.Bilinear})
+    dm.RegisterAsset("Jelly_VN_NotLikeThis.png", dm.TextureAssetDescriptor{.Bilinear})
 
+    dm.RegisterAsset("awawawa.mp3", dm.SoundAssetDescriptor{})
+    dm.RegisterAsset("belt_place.wav", dm.SoundAssetDescriptor{})
+    dm.RegisterAsset("building_place.wav", dm.SoundAssetDescriptor{})
+    dm.RegisterAsset("destroy.mp3", dm.SoundAssetDescriptor{})
 
     dm.platform.SetWindowSize(1200, 900)
 }
@@ -138,7 +147,7 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     mem.arena_init(&gameState.levelArena, levelMem)
     gameState.levelAllocator = mem.arena_allocator(&gameState.levelArena)
 
-    gameState.playerSprite = dm.CreateSprite(dm.GetTextureAsset("Jelly.png"), dm.RectInt{0, 0, 32, 33})
+    gameState.playerSprite = dm.CreateSprite(dm.GetTextureAsset("Jelly_.png"), dm.RectInt{0, 0, 32, 33})
     gameState.playerSprite.scale = 2
     gameState.playerSprite.frames = 4
     gameState.playerSprite.animDirection = .Horizontal
@@ -150,13 +159,22 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     gameState.arrowSprite.scale = 0.4
     gameState.arrowSprite.origin = {0, 0.5}
 
+    when ODIN_DEBUG {
+        gameState.challengeIdx = START_CHALLENGE
+    }
 
     itemsTex := dm.GetTextureAsset("items.png")
     gameState.itemsSprites = {
         .None = {},
         .Sugar       = dm.CreateSprite(itemsTex, dm.RectInt{0,  0, 16, 16}),
         .Candy       = dm.CreateSprite(itemsTex, dm.RectInt{16, 0, 16, 16}),
-        .BiggerCandy = dm.CreateSprite(itemsTex, dm.RectInt{0, 16, 16, 16}),
+        .Chocolate   = dm.CreateSprite(itemsTex, dm.RectInt{32, 0, 16, 16}),
+        .Flour       = dm.CreateSprite(itemsTex, dm.RectInt{48, 0, 16, 16}),
+        .CoffeeBean  = dm.CreateSprite(itemsTex, dm.RectInt{32, 16, 16, 16}),
+
+        .StarCandy   = dm.CreateSprite(itemsTex, dm.RectInt{0, 16, 16, 16}),
+        .Cookie      = dm.CreateSprite(itemsTex, dm.RectInt{16, 16, 16, 16}),
+        .PhaseCoffee = dm.CreateSprite(itemsTex, dm.RectInt{48, 16, 16, 16}),
     }
 
     beltsTex := dm.GetTextureAsset("belts.png")
@@ -177,8 +195,10 @@ GameLoad : dm.GameLoad : proc(platform: ^dm.Platform) {
     gameState.beltsSprites[{.North, .East}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 16, 16, 16})
     gameState.beltsSprites[{.North, .West}] = dm.CreateSprite(beltsTex, dm.RectInt{48, 16, 16, 16}, flipX = true)
 
-    gameState.beltsSprites[{.East, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16})
-    gameState.beltsSprites[{.West, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16}, flipX = true)
+    gameState.beltsSprites[{.West, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16})
+    gameState.beltsSprites[{.East, .North}] = dm.CreateSprite(beltsTex, dm.RectInt{32, 16, 16, 16}, flipX = true)
+
+    StartChallenge()
 }
 
 @(export)
@@ -190,6 +210,7 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
         case .Build: BuildingModeUpdate()
         case .Validation: ValidationModeUpdate()
         case .ValidationResult: ValidationResultUpdate()
+        case .FinalMessage: FinalMessageUpdate()
     }
     // Highlight Building 
     if gameState.buildUpMode == .None && dm.muiIsCursorOverUI(dm.mui, dm.input.mousePos) == false {
@@ -199,55 +220,134 @@ GameUpdate : dm.GameUpdate : proc(state: rawptr) {
         }
     }
 
-    tile := GetTileAtCoord(gameState.selectedTile)
-    if tile.building != {} || tile.beltDir != {} {
-        if dm.muiBeginWindow(dm.mui, "Selected Building", {600, 10, 140, 250}, {.NO_CLOSE}) {
-            dm.muiLabel(dm.mui, tile.beltDir)
+    when ODIN_DEBUG {
+        tile := GetTileAtCoord(gameState.selectedTile)
+        if tile.building != {} || tile.beltDir != {} || tile.merger != nil {
+            if dm.muiBeginWindow(dm.mui, "Selected Building", {600, 10, 140, 250}, {.NO_CLOSE}) {
+                dm.muiLabel(dm.mui, tile.beltDir)
+                dm.muiText (dm.mui, tile.merger)
 
-            if dm.muiHeader(dm.mui, "Building") {
-                if tile.building != {} {
-                    building, ok := dm.GetElementPtr(gameState.spawnedBuildings, tile.building)
-                    if ok {
-                        data := &Buildings[building.dataIdx]
-                        dm.muiLabel(dm.mui, "Name:", data.name)
-                        dm.muiLabel(dm.mui, building.handle)
-                        dm.muiLabel(dm.mui, "Pos:", building.gridPos)
+                if dm.muiHeader(dm.mui, "Building") {
+                    if tile.building != {} {
+                        building, ok := dm.GetElementPtr(gameState.spawnedBuildings, tile.building)
+                        if ok {
+                            data := &Buildings[building.dataIdx]
+                            dm.muiLabel(dm.mui, "Name:", data.name)
+                            dm.muiLabel(dm.mui, building.handle)
+                            dm.muiLabel(dm.mui, "Pos:", building.gridPos)
 
-                        dm.muiLabel(dm.mui)
+                            dm.muiLabel(dm.mui)
 
-                        productionTime := PRODUCTION_BASE / f32(data.productionRate)
-                        productionPercent := building.productionTimer / productionTime
+                            productionTime := PRODUCTION_BASE / f32(data.productionRate)
+                            productionPercent := building.productionTimer / productionTime
 
-                        dm.muiLabel(dm.mui, "Production: ", int(productionPercent * 100), "%", sep = "")
-                        dm.muiLabel(dm.mui, data.producedItem, building.currentItemsCount)
-                        // dm.muiLabel(dm.mui, "requestedEnergy:", building.requestedEnergy)
+                            dm.muiLabel(dm.mui, "Production: ", int(productionPercent * 100), "%", sep = "")
+                            dm.muiLabel(dm.mui, data.producedItem, building.currentItemsCount)
+                            // dm.muiLabel(dm.mui, "requestedEnergy:", building.requestedEnergy)
 
-                        dm.muiLabel(dm.mui, "\nInputs:")
-                        for input in building.inputState {
-                            if input.storedItem == .None {
-                                continue
+                            dm.muiLabel(dm.mui, "\nInputs:")
+                            for input in building.inputState {
+                                if input.storedItem == .None {
+                                    continue
+                                }
+
+                                dm.muiLabel(dm.mui, input.storedItem, input.itemsCount)
                             }
-
-                            dm.muiLabel(dm.mui, input.storedItem, input.itemsCount)
                         }
+                    }
+                }
+
+                dm.muiEndWindow(dm.mui)
+            }
+        }
+    }
+
+    size := iv2{140, 250}
+    pos := iv2 {
+        (dm.renderCtx.frameSize.x - size.x) / 2,
+        (dm.renderCtx.frameSize.y - size.y) / 2,
+    }
+
+    if gameState.showLevelSelect {
+        if dm.muiBeginWindow(dm.mui, "LEVEL SELECT", 
+            {pos.x, pos.y, size.x, size.y},
+            {.NO_CLOSE, .NO_RESIZE})
+        {
+            for challenge in Challenges {
+                if dm.muiHeader(dm.mui, challenge.name) {
+                    dm.muiLabel(dm.mui, "Scores: ")
+                    if dm.muiButton(dm.mui, "Select") {
+
                     }
                 }
             }
 
+            dm.muiLabel(dm.mui)
+            if dm.muiButton(dm.mui, "Close") {
+                gameState.showLevelSelect = false
+            }
             dm.muiEndWindow(dm.mui)
         }
     }
 }
 
+ControlCamera :: proc(cursorOverUI: bool) {
+
+    // Camera Control
+    camAspect := dm.renderCtx.camera.aspect
+    camHeight := dm.renderCtx.camera.orthoSize
+    camWidth  := camAspect * camHeight
+
+    levelSize := v2{
+        f32(gameState.level.sizeX),
+        f32(gameState.level.sizeY),
+    }
+
+    if gameState.buildUpMode == .None {
+        scroll := dm.input.scroll if cursorOverUI == false else 0
+        camHeight = camHeight - f32(scroll) * 0.3
+        camWidth = camAspect * camHeight
+    }
+
+    camHeight = clamp(camHeight, 1, levelSize.x / 2)
+    camWidth  = clamp(camWidth,  1, levelSize.y / 2)
+
+    camSize := min(camHeight, camWidth / camAspect)
+    dm.renderCtx.camera.orthoSize = camSize
+
+    camPos := gameState.playerPosition
+    camPos.x = clamp(camPos.x, camWidth,  levelSize.x - camWidth)
+    camPos.y = clamp(camPos.y, camHeight, levelSize.y - camHeight)
+    dm.renderCtx.camera.position.xy = cast([2]f32) camPos
+}
+
 VNModeUpdate :: proc() {
-    if dm.GetMouseButton(.Left) == .JustReleased {
+    if dm.GetMouseButton(.Left) == .JustPressed {
         gameState.challengeMessageIdx += 1
-        if gameState.challengeMessageIdx >= len(Challanges[gameState.challengeIdx].messages) {
+        if gameState.challengeMessageIdx >= len(Challenges[gameState.challengeIdx].messages) {
             gameState.stage = .Build
         }
     }
 
-    dm.renderCtx.camera.position.xy = cast([2]f32) gameState.playerPosition
+    ControlCamera(false)
+}
+
+RefreshMoney :: proc() {
+    challenge := Challenges[gameState.challengeIdx]
+    gameState.money = challenge.money
+
+    buildingIt := dm.MakePoolIter(&gameState.spawnedBuildings)
+    for building in dm.PoolIterate(&buildingIt) {
+        data := Buildings[building.dataIdx]
+        gameState.money -= data.cost
+    }
+}
+
+StartChallenge :: proc() {
+    gameState.challengeMessageIdx = 0
+    gameState.stage = .VN
+
+    RefreshMoney()
 }
 
 BuildingModeUpdate :: proc() {
@@ -264,9 +364,10 @@ BuildingModeUpdate :: proc() {
 
         CheckCollision :: proc(moveVec: v2) -> bool {
             newPos := gameState.playerPosition + moveVec * PLAYER_SPEED * f32(dm.time.deltaTime)
+            newPos += PLAYER_COLL_OFFSET
             playerBounds := dm.Bounds2D{
-                newPos.x - 1, newPos.x + 1,
-                newPos.y - 1, newPos.y + 1,
+                newPos.x - PLAYER_COLL_SIZE.x / 2, newPos.x + PLAYER_COLL_SIZE.x / 2,
+                newPos.y - PLAYER_COLL_SIZE.y / 2, newPos.y + PLAYER_COLL_SIZE.y / 2,
             }
 
             isColliding: bool
@@ -316,40 +417,18 @@ BuildingModeUpdate :: proc() {
             }
 
             dm.AnimateSprite(&gameState.playerSprite, f32(dm.time.gameTime), 0.2)
-            // fmt.println("FUCK")
+            levelSize := v2{f32(gameState.level.sizeX), f32(gameState.level.sizeY)}
+            gameState.playerPosition.x = clamp(gameState.playerPosition.x, 2, levelSize.x - 1)
+            gameState.playerPosition.y = clamp(gameState.playerPosition.y, 2, levelSize.y - 1)
         }
+
     }
     else {
         gameState.playerSprite.currentFrame = 0
         // fmt.println(dm.time.frame, gameState.playerSprite.texturePos.x)
     }
 
-    // Camera Control
-    camAspect := dm.renderCtx.camera.aspect
-    camHeight := dm.renderCtx.camera.orthoSize
-    camWidth  := camAspect * camHeight
-
-    levelSize := v2{
-        f32(gameState.level.sizeX - 1), // -1 to account for level edge
-        f32(gameState.level.sizeY - 1),
-    }
-
-    if gameState.buildUpMode == .None {
-        scroll := dm.input.scroll if cursorOverUI == false else 0
-        camHeight = camHeight - f32(scroll) * 0.3
-        camWidth = camAspect * camHeight
-    }
-
-    camHeight = clamp(camHeight, 1, levelSize.x / 2)
-    camWidth  = clamp(camWidth,  1, levelSize.y / 2)
-
-    camSize := min(camHeight, camWidth / camAspect)
-    dm.renderCtx.camera.orthoSize = camSize
-
-    camPos := gameState.playerPosition
-    camPos.x = clamp(camPos.x, camWidth + 1,  levelSize.x - camWidth)
-    camPos.y = clamp(camPos.y, camHeight + 1, levelSize.y - camHeight)
-    dm.renderCtx.camera.position.xy = cast([2]f32) camPos
+    ControlCamera(cursorOverUI)
 
     // Destroy structres
     if gameState.buildUpMode == .Destroy &&
@@ -359,9 +438,19 @@ BuildingModeUpdate :: proc() {
         tile := TileUnderCursor()
         if tile.building != {} {
             RemoveBuilding(tile.building)
+            dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("destroy.mp3"));
         }
         else if tile.beltDir != {} {
             DestroyBelt(tile)
+            dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("destroy.mp3"));
+        }
+        else if tile.splitter != nil {
+            DestroySplitter(tile)
+            dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("destroy.mp3"));
+        }
+        else if tile.merger != nil {
+            DestroyMerger(tile)
+            dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("destroy.mp3"));
         }
     }
 
@@ -375,10 +464,13 @@ BuildingModeUpdate :: proc() {
     if gameState.buildUpMode == .Belt &&
        cursorOverUI == false
     {
+        @static prevCoord: iv2
+
         leftBtn := dm.GetMouseButton(.Left)
-        if leftBtn == .Down  {
+        if leftBtn == .Down {
             coord := MousePosGrid()
-            if IsInDistance(gameState.playerPosition, coord) {
+
+            if IsInDistance(gameState.playerPosition, coord) && coord != prevCoord{
                 tile := GetTileAtCoord(coord)
 
                 canPlace := tile.building == {}
@@ -390,13 +482,19 @@ BuildingModeUpdate :: proc() {
                     case .Splitter:
                         PlaceSplitter(tile)
                     case .Merger:
-                        tile.merger = Merger{
-                            outDir = gameState.buildingBeltDir.to
-                        }
+                        PlaceMerger(tile)
                     }
 
+                    dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("belt_place.wav"));
                 }
+
+                fmt.println("skjdflsdk");
             }
+
+            prevCoord = coord
+        }
+        if leftBtn == .Up {
+            prevCoord = {-1, -1}
         }
 
         if dm.input.scroll != 0 {
@@ -462,16 +560,31 @@ BuildingModeUpdate :: proc() {
 
         if dm.muiButton(dm.mui, "Build Belt") {
             gameState.buildUpMode = .Belt
+            gameState.beltBuildMode = .Belt
+            gameState.buildingBeltDir = {.West, .East}
+        }
+
+        if dm.muiButton(dm.mui, "Destroy Structures") {
+            gameState.buildUpMode = .Destroy
         }
 
         dm.muiLabel(dm.mui, "")
         if dm.muiHeader(dm.mui, "Level goals") {
-            dm.muiLabel(dm.mui, "TBD")
+            // dm.muiLabel(dm.mui, "TBD")
+            challange := Challenges[gameState.challengeIdx]
+            for item in challange.items {
+                dm.muiLabel(dm.mui, item.type, ": ", item.count, sep = "")
+            }
+            dm.muiLabel(dm.mui, fmt.tprintf("  In %v seconds", challange.time))
         }
 
         if dm.muiButton(dm.mui, "CHECK SOLUTION") {
             StartValidation()
         }
+
+        // if dm.muiButton(dm.mui, "Level Select") {
+        //     gameState.showLevelSelect = !gameState.showLevelSelect
+        // }
 
         dm.muiEndWindow(dm.mui)
     }
@@ -481,10 +594,47 @@ BuildingModeUpdate :: proc() {
         if dm.muiBeginWindow(dm.mui, "BUILDINGS", {190, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE }) {
             dm.muiLabel(dm.mui, "Buildings:")
             for b, idx in Buildings {
-                if dm.muiButton(dm.mui, fmt.tprintf("%v - %v", idx + 1, b.name)) {
+                if gameState.challengeIdx < b.unlockedAfterLevel {
+                    continue
+                }
+
+                res := dm.muiButtonEx(dm.mui, fmt.tprintf("%v - %v", idx + 1, b.name))
+                if .SUBMIT in res {
                     gameState.selectedBuildingIdx = idx
                 }
+                if .HOVER in res {
+                    mousePos := dm.input.mousePos + {5, 5}
+                    if dm.muiHoverWindow(dm.mui, b.name, mousePos, {220, 200}) {
+                        dm.muiLabel(dm.mui, b.name)
+
+                        if b.producedItem != .None {
+                            dm.muiLabel(dm.mui, "Produces:", b.producedItem, ": ", b.productionRate, "/s", sep = "")
+                        }
+
+                        recipe := Recipes[b.producedItem]
+                        if len(recipe) != 0 {
+                            dm.muiLabel(dm.mui, "Requires:")
+                            for item in recipe {
+                                dm.muiLabel(
+                                    dm.mui, 
+                                    item.type, ": ",
+                                    item.count * b.productionRate, "/",
+                                    PRODUCTION_BASE, "s")
+                            }
+                        }
+
+                        dm.muiText(dm.mui, b.description)
+                    }
+                }
             }
+
+            dm.muiText(dm.mui, `
+Controls:
+Left Mouse - Place Building
+Right Mouse - Cancel
+`
+            )
+
             dm.muiEndWindow(dm.mui)
         }
     }
@@ -510,90 +660,26 @@ BuildingModeUpdate :: proc() {
                 gameState.beltBuildMode = .Merger
             }
 
+            dm.muiText(dm.mui, `
+Controls:
+Left Mouse - Place belt
+Scroll - Rotate
+Middle Mouse - Reverse direction
+Right Mouse - Cancel
+`
+                      )
+
             dm.muiEndWindow(dm.mui)
         }
     }
 
-    // temp UI
-    // if dm.muiBeginWindow(dm.mui, "GAME MENU", {10, 10, 110, 450}) {
-    //     dm.muiLabel(dm.mui, gameState.selectedTile)
-    //     dm.muiLabel(dm.mui, "Money:", gameState.money)
-
-    //     for b, idx in Buildings {
-    //         if dm.muiButton(dm.mui, b.name) {
-    //             gameState.selectedBuildingIdx = idx
-    //             gameState.buildUpMode = .Building
-    //         }
-    //     }
-
-    //     // dm.muiLabel(dm.mui, "Pipes:")
-    //     if dm.muiButton(dm.mui, "Belt") {
-    //         gameState.buildUpMode = .Belt
-    //         gameState.beltBuildMode = .Straight
-    //         gameState.buildingBeltDir = {.West, .East}
-    //     }
-
-    //     // if dm.muiButton(dm.mui, "Angled") {
-    //     //     gameState.buildUpMode = .Belt
-    //     //     gameState.buildingBeltDir = {.South, .East}
-    //     // }
-
-    //     dm.muiLabel(dm.mui)
-    //     if dm.muiButton(dm.mui, "Destroy") {
-    //         gameState.buildUpMode = .Destroy
-    //     }
-
-    //     if dm.muiButton(dm.mui, "Reset level") {
-    //         name := gameState.level.name
-    //         OpenLevel(name)
-    //     }
-
-    //     dm.muiLabel(dm.mui, "LEVELS:")
-    //     for l in gameState.levels {
-    //         if dm.muiButton(dm.mui, l.name) {
-    //             OpenLevel(l.name)
-    //         }
-    //     }
-
-    //     dm.muiLabel(dm.mui, "MEMORY")
-    //     dm.muiLabel(dm.mui, "\tLevel arena HWM:", gameState.levelArena.peak_used / mem.Kilobyte, "kb")
-    //     dm.muiLabel(dm.mui, "\tLevel arena used:", gameState.levelArena.offset / mem.Kilobyte, "kb")
-
-    //     if dm.muiButton(dm.mui, "START VALIDATION") {
-    //         StartValidation()
-    //     }
-
-    //     dm.muiEndWindow(dm.mui)
-    // }
-
-    // if gameState.buildUpMode != .None {
-    //     size := iv2{
-    //         100, 60
-    //     }
-
-    //     pos := iv2{
-    //         dm.renderCtx.frameSize.x / 2 - size.x / 2,
-    //         dm.renderCtx.frameSize.y - 100,
-    //     }
-
-    //     if dm.muiBeginWindow(dm.mui, "Current Mode", {pos.x, pos.y, size.x, size.y}, 
-    //         {.NO_CLOSE, .NO_RESIZE})
-    //     {
-    //         label := gameState.buildUpMode == .Building ? "Building" :
-    //                  gameState.buildUpMode == .Belt     ? "Belt" :
-    //                  gameState.buildUpMode == .Destroy  ? "Destroy" :
-    //                                                       "UNKNOWN MODE"
-
-    //         dm.muiLabel(dm.mui, label)
-
-    //         dm.muiEndWindow(dm.mui)
-    //     }
-    // }
 }
 
 StartValidation :: proc() {
     gameState.stage = .Validation
     gameState.validationTimer = 0
+
+    gameState.validationResult = {}
 
     viewBounds := dm.Bounds2D{
         max(f32), min(f32),
@@ -619,8 +705,15 @@ StartValidation :: proc() {
     camWidth  := (viewBounds.right - viewBounds.left)
     camSize := max(camHeight, camWidth / camAspect) / 2
 
-    dm.renderCtx.camera.position.xy = cast([2]f32) dm.BoundsCenter(viewBounds)
+    camSize = max(camSize, 5)
+
+    boundsCenter := dm.BoundsCenter(viewBounds)
+    camPos := boundsCenter == {0, 0} ? gameState.playerPosition : boundsCenter
+
+    dm.renderCtx.camera.position.xy = cast([2]f32) camPos
     dm.renderCtx.camera.orthoSize = camSize
+
+    dm.PlaySound(cast(dm.SoundHandle) dm.GetAsset("awawawa.mp3"))
 }
 
 ValidationModeUpdate :: proc() {
@@ -681,43 +774,47 @@ ValidationModeUpdate :: proc() {
                 building, data := GetBuilding(tile.building)
                 input := &building.inputState[tile.inputIndex]
                 
-                if (input.storedItem == .None || input.storedItem == item.type) &&
+                if data.isContainer {
+                    gameState.validationResult[item.type] += 1
+
+                    dm.FreeSlot(&gameState.spawnedItems, item.handle)
+                    continue
+                }
+                else if (input.storedItem == .None || input.storedItem == item.type) &&
                    input.itemsCount < INPUT_MAX_ITEMS
                 {
                     input.storedItem = item.type
                     input.itemsCount += 1
 
                     dm.FreeSlot(&gameState.spawnedItems, item.handle)
-
                     continue
                 }
             }
 
 
             if merger, ok := tile.merger.?; ok {
-                merger.movingItem = {}
-                tile.merger = merger
+                if merger.movingItem == item.handle {
+                    merger.movingItem = {}
+                    tile.merger = merger
+                }
             }
 
             if splitter, ok := tile.splitter.?; ok {
                 nextDir := splitter.nextOut
                 for i in 0..<4 {
                     nextPos := CoordToPos(tile.gridPos + DirToVec[nextDir])
-                    if CheckItemCollision(nextPos, {}) == false {
-                        tile.nextTile = tile.gridPos + DirToVec[nextDir]
+                    nextTile := GetTileAtCoord(tile.gridPos + DirToVec[nextDir])
 
+                    isCollision := CheckItemCollision(nextPos, {})
+                    isBelt := nextTile.beltDir.from == ReverseDir[nextDir]
+                    isOut := nextDir != splitter.inDir
+
+                    if isCollision == false && isBelt && isOut {
+                        tile.nextTile = tile.gridPos + DirToVec[nextDir]
                         nextDir = NextDir[nextDir]
-                        if nextDir == splitter.inDir {
-                            nextDir = NextDir[nextDir]
-                        }
                         break
                     }
-                    else {
-                        nextDir = NextDir[nextDir]
-                        if nextDir == splitter.inDir {
-                            nextDir = NextDir[nextDir]
-                        }
-                    }
+                    nextDir = NextDir[nextDir]
                 }
 
                 splitter.nextOut = nextDir
@@ -729,21 +826,28 @@ ValidationModeUpdate :: proc() {
                 assert(nextTile != nil)
 
                 if merger, ok := nextTile.merger.?; ok {
-                    isFree := true
-                    for q in merger.queuedItems {
-                        if q == true {
-                            isFree = false
-                            break
+                    if merger.movingItem == {} {
+                        if  merger.queueIdx == 0 || 
+                            merger.itemsQueue[0] == item.handle
+                        {
+                            item.nextTile = nextTile.gridPos
+                            merger.movingItem = item.handle
+                            item.waitingForMerger = false
+
+                            if merger.queueIdx > 0 {
+                                for i := 1; i < len(merger.itemsQueue); i += 1 {
+                                    merger.itemsQueue[i - 1] = merger.itemsQueue[i]
+                                }
+                                merger.queueIdx -= 1
+                            }
                         }
                     }
-
-                    if isFree && merger.movingItem == {} {
-                        item.nextTile = nextTile.gridPos
-                        merger.movingItem = item.handle
-                        merger.queuedItems[tile.beltDir.to] = false
-                    }
                     else {
-                        // merger.queuedItems[tile.beltDir.to] = true
+                        if item.waitingForMerger == false {
+                            item.waitingForMerger = true
+                            merger.itemsQueue[merger.queueIdx] = item.handle
+                            merger.queueIdx += 1
+                        }
                     }
 
                     nextTile.merger = merger
@@ -751,7 +855,6 @@ ValidationModeUpdate :: proc() {
                 else {
                     item.nextTile = nextTile.gridPos
                 }
-
 
                 targetPos = CoordToPos(item.nextTile)
                 pos, leftDist = dm.MoveTowards(item.position, targetPos, leftDist)
@@ -781,18 +884,30 @@ ValidationModeUpdate :: proc() {
         for &tile in gameState.level.grid {
             if merger, ok := tile.merger.?; ok {
                 merger.movingItem = {}
-                merger.queuedItems = {}
+                merger.queueIdx = 0
                 tile.merger = merger
             }
-        }
 
+            if splitter, ok := tile.splitter.?; ok {
+                splitter.nextOut = ReverseDir[splitter.inDir]
+                // tile.nextTile = {}
+                tile.splitter = splitter
+            }
+        }
     }
 
 
+    challenge := Challenges[gameState.challengeIdx]
     if dm.muiBeginWindow(dm.mui, "VALIDATION", {10, 10, 170, 300}, {.NO_TITLE, .NO_RESIZE}) {
+        dm.muiLabel(dm.mui, "Validation:")
+
+        for item in challenge.items {
+            dm.muiLabel(dm.mui, item.type, ": ", gameState.validationResult[item.type], "/", item.count, sep="")
+        }
+
         dm.muiLabel(
             dm.mui, 
-            fmt.tprintf("Time: %.2v/%v s", gameState.validationTimer, VALIDATION_MODE_DURATION)
+            fmt.tprintf("Time: %.2v/%v s", gameState.validationTimer, challenge.time)
         )
 
         if dm.muiButton(dm.mui, "Stop") {
@@ -806,18 +921,13 @@ ValidationModeUpdate :: proc() {
     }
 
     // validation mode end
-    if gameState.validationTimer >= VALIDATION_MODE_DURATION {
-
-        gameState.validationResult = {}
-
-        it := dm.MakePoolIter(&gameState.spawnedBuildings)
-        for building in dm.PoolIterate(&it) {
-
-            data := Buildings[building.dataIdx]
-            for &input in building.inputState {
-                if data.isContainer {
-                    gameState.validationResult[input.storedItem] += input.itemsCount
-                }
+    if gameState.validationTimer >= challenge.time {
+        gameState.challengeCompleted = true
+        challenge := Challenges[gameState.challengeIdx]
+        for item in challenge.items {
+            if gameState.validationResult[item.type] < item.count {
+                gameState.challengeCompleted = false
+                break
             }
         }
 
@@ -835,20 +945,53 @@ ValidationResultUpdate :: proc() {
         dm.renderCtx.frameSize.y / 2 - size.y / 2,
     }
     if dm.muiBeginWindow(dm.mui, "RESULT", {pos.x, pos.y, size.x, size.y}, { .NO_TITLE, .NO_RESIZE}) {
-        for res, i in gameState.validationResult {
-            type := Item(i)
-            if type == .None do continue
-            if res == 0 do continue
+        
+        if dm.muiHeader(dm.mui, "Result", {.EXPANDED, .NO_CLOSE}) {
+            for res, i in gameState.validationResult {
+                type := Item(i)
+                if type == .None do continue
+                if res == 0 do continue
 
-            dm.muiLabel(dm.mui, type, "-", res)
+                dm.muiLabel(dm.mui, type, "-", res)
+            }
         }
 
-        if dm.muiButton(dm.mui, "Ok") {
+        if gameState.challengeCompleted {
+            dm.muiLabel(dm.mui)
+            if gameState.challengeIdx < len(Challenges) - 1 {
+                if dm.muiButton(dm.mui, "Next Level") {
+                    gameState.challengeIdx += 1
+                    gameState.challengeMessageIdx = 0
+                    gameState.stage = .VN
+                }
+            }
+            else {
+                if dm.muiButton(dm.mui, "Ok") {
+                    gameState.challengeMessageIdx = 0
+                    gameState.stage = .FinalMessage
+                }
+            }
+        }
+
+
+        dm.muiLabel(dm.mui)
+
+        if dm.muiButton(dm.mui, "Try again") {
             gameState.stage = .Build
         }
 
         dm.muiEndWindow(dm.mui)
     }
+}
+
+FinalMessageUpdate :: proc() {
+    if gameState.challengeMessageIdx < len(FinalMessage) - 1 {
+        if dm.GetMouseButton(.Left) == .JustPressed {
+            gameState.challengeMessageIdx += 1
+        }
+    }
+
+    ControlCamera(false)
 }
 
 @(export)
@@ -913,7 +1056,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         if next, ok := tile.nextTile.?; ok {
             posA := tile.worldPos
             posB := CoordToPos(next)
-            dm.DrawLine(dm.renderCtx, posA, posB, false, dm.BLUE)
+            // dm.DrawLine(dm.renderCtx, posA, posB, false, dm.BLUE)
         }
     }
 
@@ -925,7 +1068,8 @@ GameRender : dm.GameRender : proc(state: rawptr) {
     }
 
     // draw Buildings
-    for &building in gameState.spawnedBuildings.elements {
+    buildingIt := dm.MakePoolIter(&gameState.spawnedBuildings)
+    for building in dm.PoolIterate(&buildingIt) {
         // @TODO @CACHE
         buildingData := &Buildings[building.dataIdx]
         tex := dm.GetTextureAsset(buildingData.spriteName)
@@ -934,6 +1078,16 @@ GameRender : dm.GameRender : proc(state: rawptr) {
 
         pos := building.position
         dm.DrawSprite(sprite, pos)
+    }
+
+
+    buildingIt = dm.MakePoolIter(&gameState.spawnedBuildings)
+    for building in dm.PoolIterate(&buildingIt) {
+        buildingData := &Buildings[building.dataIdx]
+        if buildingData.producedItem != nil {
+            sprite := gameState.itemsSprites[buildingData.producedItem]
+            dm.DrawSprite(sprite, building.position + buildingData.showItemOffset)
+        }
     }
 
     // Draw Placing structures
@@ -953,16 +1107,17 @@ GameRender : dm.GameRender : proc(state: rawptr) {
                     color: dm.color
                     switch gameState.buildUpMode {
                     case .Building:
-                        coord := coord - building.size / 2
-                        color = (CanBePlaced(building, coord) ?
-                                           {0, 1, 0, 0.2} :
-                                           {1, 0, 0, 0.2})
+                        tile := GetTileAtCoord(coord)
+                        // coord := coord - building.size / 2
+                        color = (tile.building == {} ?
+                                           {0, 1, 0, 0.1} :
+                                           {1, 0, 0, 0.1})
 
                     case .Belt: 
                         tile := GetTileAtCoord(coord)
                         color = (tile.building == {} ?
-                                           {0, 0, 1, 0.2} :
-                                           {1, 0, 0, 0.2})
+                                           {0, 0, 1, 0.1} :
+                                           {1, 0, 0, 0.1})
 
                     case .Destroy:
                         color = {1, 0, 0, 0.2}
@@ -970,12 +1125,12 @@ GameRender : dm.GameRender : proc(state: rawptr) {
                     case .None:
                     }
 
-                    dm.DrawBlankSprite(CoordToPos(coord), {1, 1}, color)
+                    dm.DrawBlankSprite(CoordToPos(coord), 0.9, color)
                 }
             }
         }
 
-        dm.DrawGrid()
+        // dm.DrawGrid()
     }
 
     if gameState.buildUpMode == .Building {
@@ -1032,7 +1187,17 @@ GameRender : dm.GameRender : proc(state: rawptr) {
     if gameState.buildUpMode == .Destroy {
         if IsInDistance(gameState.playerPosition, MousePosGrid()) {
             tile := TileUnderCursor()
-            if tile.building != {} || tile.beltDir != {} {
+            if tile.building != {} {
+                building, data := GetBuilding(tile.building)
+                pos := dm.ToV2(building.gridPos)
+                dm.DrawBlankSprite(
+                    pos,
+                    dm.ToV2(data.size),
+                    {1, 0, 0, 0.5},
+                    pivot = {0, 1}
+                )
+            }
+            else if tile.beltDir != {} || tile.splitter != nil || tile.merger != nil {
                 dm.DrawBlankSprite(tile.worldPos, 1, {1, 0, 0, 0.5})
             }
         }
@@ -1051,7 +1216,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
     }
 
-    if gameState.stage == .VN {
+    if gameState.stage == .VN || gameState.stage == .FinalMessage {
         rectHeight :: 200
         margin :: 20
 
@@ -1061,16 +1226,25 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         }
         width := f32(dm.renderCtx.frameSize.x) - margin * 2
 
-        message := Challanges[gameState.challengeIdx].messages[gameState.challengeMessageIdx]
+        messages: []Message
+        if gameState.stage == .VN {
+            messages = Challenges[gameState.challengeIdx].messages[:]
+        }
+        else if gameState.stage == .FinalMessage {
+            messages = FinalMessage[:]
+        }
+
+        message := messages[gameState.challengeMessageIdx]
         
-        dm.DrawRect(
-            dm.GetTextureAsset(message.imageName),
-            v2{
-                f32(dm.renderCtx.frameSize.x) - 200,
-                centerPos.y
-            },
-            scale = 1.5
-        )
+        if message.imageName != "" {
+            dm.DrawRect(
+                dm.GetTextureAsset(message.imageName),
+                v2{
+                    f32(dm.renderCtx.frameSize.x) - 200,
+                    centerPos.y
+                },
+            )
+        }
 
         dm.DrawRect(centerPos, v2{width, rectHeight}, color = dm.color{0, 0, 0, 0.6})
         dm.DrawTextCentered(
@@ -1079,12 +1253,14 @@ GameRender : dm.GameRender : proc(state: rawptr) {
             dm.LoadDefaultFont(dm.renderCtx),
             centerPos, 40)
 
-        dm.DrawTextCentered(
-            dm.renderCtx,
-            "Click To continue",
-            dm.LoadDefaultFont(dm.renderCtx),
-            v2{centerPos.x, f32(dm.renderCtx.frameSize.y) - margin - 20},
-            15,
-            color = {0.4, 0.4, 0.4, 0.8})
+        if message.isFinal == false {
+            dm.DrawTextCentered(
+                dm.renderCtx,
+                "Click To continue",
+                dm.LoadDefaultFont(dm.renderCtx),
+                v2{centerPos.x, f32(dm.renderCtx.frameSize.y) - margin - 20},
+                15,
+                color = {0.4, 0.4, 0.4, 0.8})
+        }
     }
 }

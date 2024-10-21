@@ -7,6 +7,8 @@ import "core:math/linalg/glsl"
 import "core:fmt"
 import "core:slice"
 
+import so "core:container/small_array"
+
 Direction :: enum {
     None,
 
@@ -75,8 +77,10 @@ Splitter :: struct {
 
 Merger :: struct {
     outDir: Direction,
+
     movingItem: ItemHandle,
-    queuedItems: [Direction]bool,
+    queueIdx: int,
+    itemsQueue: [4]ItemHandle,
 }
 
 
@@ -100,6 +104,9 @@ PlaceBelt :: proc(coord: iv2, dir: BeltDir) -> ^Tile {
     }
 
     tile.beltDir = dir
+
+    tile.merger = nil
+    tile.splitter = nil
 
     dirVec := DirToVec[dir.to]
     nextTile := GetTileAtCoord(coord + dirVec)
@@ -143,21 +150,44 @@ PlaceSplitter :: proc(tile: ^Tile) {
         nextOut = gameState.buildingBeltDir.to
     }
 
-    tile.splitter = splitter
+    tile.beltDir = {}
 
-    dirVec := DirToVec[splitter.inDir]
+    tile.splitter = splitter
+    dirVec := DirToVec[splitter.nextOut]
+    nextTile := GetTileAtCoord(tile.gridPos + dirVec)
+
+
+    dirVec = DirToVec[splitter.inDir]
     prevTile := GetTileAtCoord(tile.gridPos + dirVec)
     if prevTile != nil {
         if prevTile.beltDir.to == ReverseDir[splitter.inDir] {
             prevTile.nextTile = tile.gridPos
         }
     }
+
+}
+
+DestroySplitter :: proc(tile: ^Tile) {
+    splitter, ok := tile.splitter.?
+    assert(ok)
+
+    dirVec := DirToVec[splitter.inDir]
+    prevTile := GetTileAtCoord(tile.gridPos + dirVec)
+    if prevTile != nil {
+        if prevTile.beltDir.to == ReverseDir[splitter.inDir] {
+            prevTile.nextTile = nil
+        }
+    }
+
+    tile.splitter = nil
 }
 
 PlaceMerger :: proc(tile: ^Tile) {
     merger := Merger {
         outDir = gameState.buildingBeltDir.to,
     }
+
+    tile.beltDir = {}
 
     neighbors := GetNeighbourTiles(tile.gridPos, context.temp_allocator)
     for neighbor in neighbors {
@@ -167,7 +197,25 @@ PlaceMerger :: proc(tile: ^Tile) {
         }
     }
 
+    next := GetTileAtCoord(tile.gridPos + DirToVec[merger.outDir])
+    if next != nil && ReverseDir[next.beltDir.from] == merger.outDir {
+        tile.nextTile = next.gridPos
+    }
+
     tile.merger = merger
+}
+
+DestroyMerger :: proc(tile: ^Tile) {
+    neighbors := GetNeighbourTiles(tile.gridPos, context.temp_allocator)
+    for neighbor in neighbors {
+        dir := DirToVec[neighbor.beltDir.to]
+        if neighbor.gridPos + dir == tile.gridPos {
+            neighbor.nextTile = nil
+        }
+    }
+
+    tile.nextTile = nil
+    tile.merger = nil
 }
 
 DestroyBelt :: proc(tile: ^Tile) {

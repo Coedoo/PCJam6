@@ -287,7 +287,7 @@ class WebGLInterface {
 			SetCurrentContextById: (name_ptr, name_len) => {
 				let name = this.mem.loadString(name_ptr, name_len);
 				let element = getElement(name);
-				return this.setCurrentContext(element, {alpha: true, antialias: true, depth: true, premultipliedAlpha: true});
+				return this.setCurrentContext(element, {alpha: false, antialias: true, depth: true, premultipliedAlpha: false});
 			},
 			CreateCurrentContextById: (name_ptr, name_len, attributes) => {
 				let name = this.mem.loadString(name_ptr, name_len);
@@ -1596,6 +1596,13 @@ function odinSetupDefaultImports(wasmMemoryInterface, consoleElement, memory, ev
 					event_data.id_len = id_len;
 					event_data.event = e;
 					event_data.name_code = name_code;
+
+					// var viewportOffset = e.target.getBoundingClientRect();
+					// event_data.event.offsetX = e.clientX + viewportOffset.top;
+					// event_data.event.offsetY = e.clientY + viewportOffset.left;
+
+					// console.log(event_data.event.offsetX);
+					// console.log(event_data.event.offsetY);
 
 					eventQueue.push({event_data: event_data, data: data, callback: callback});
 				};

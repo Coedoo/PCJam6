@@ -59,7 +59,7 @@ void main() {
     // @TODO: check if it causes performance hit
     if(color.a == 0.) discard;
 
-    vec3 c = color.rgb * color.a;
+    vec3 c = color.rgb;
     FragColor = vec4(c, color.a) * texColor;
     // FragColor = vec4(1,1,1,1);
 }

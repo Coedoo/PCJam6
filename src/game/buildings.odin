@@ -26,6 +26,8 @@ Building :: struct {
     spriteName: string,
     spriteRect: dm.RectInt,
 
+    description: string,
+
     // flags: BuildignFlags,
     restrictedTiles: []TileType,
 
@@ -35,6 +37,8 @@ Building :: struct {
 
     maxStorage: int,
 
+    showItemOffset: v2,
+
     output: BuildingIO,
     inputs: []BuildingIO,
 
@@ -42,6 +46,8 @@ Building :: struct {
     productionRate: int,
 
     isContainer: bool,
+
+    unlockedAfterLevel: int,
 }
 
 BuildingInstance :: struct {

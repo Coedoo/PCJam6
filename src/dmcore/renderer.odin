@@ -6,8 +6,8 @@ TexHandle :: distinct Handle
 ShaderHandle :: distinct Handle
 BatchHandle :: distinct Handle
 
-defaultWindowWidth  :: 800
-defaultWindowHeight :: 600
+defaultWindowWidth  :: 1200
+defaultWindowHeight :: 900
 
 UNIFORM_MEM :: 1 * mem.Megabyte
 

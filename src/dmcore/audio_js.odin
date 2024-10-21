@@ -7,7 +7,7 @@ import "core:strings"
 foreign import audio "audio"
 foreign audio {
     Load :: proc "c" (dataPtr: rawptr, dataLen: int) ---
-    Play :: proc "c" (dataPtr: rawptr) ---
+    Play :: proc "c" (dataPtr: rawptr, volume: f32) ---
     jsSetVolume :: proc "c" (dataPtr: rawptr, volume: f32) ---
     jsSetLooping :: proc "c" (dataPtr: rawptr, volume: bool) ---
 }
@@ -32,7 +32,7 @@ _LoadSoundFromMemory :: proc(audio: ^Audio, data: []u8) -> SoundHandle {
     Load(raw_data(data), len(data))
     sound := CreateElement(&audio.sounds)
 
-    sound._volume = 1
+    sound._volume = 0.5
     sound.ptr = raw_data(data)
 
     return sound.handle
@@ -40,7 +40,7 @@ _LoadSoundFromMemory :: proc(audio: ^Audio, data: []u8) -> SoundHandle {
 
 _PlaySound :: proc(audio: ^Audio, handle: SoundHandle) {
     sound, ok := GetElementPtr(audio.sounds, handle)
-    Play(sound.ptr)
+    Play(sound.ptr, sound._volume)
 }
 
 _SetVolume :: proc(sound: ^Sound, volume: f32) {

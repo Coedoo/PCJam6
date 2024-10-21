@@ -916,7 +916,7 @@ UICheckbox :: proc(text: string, value: ^bool) -> (res: bool) {
 
 DrawNode :: proc(renderCtx: ^RenderContext, node: ^UINode) {
     nodeCenter := node.targetPos + node.targetSize / 2 - node.targetSize * node.origin
-    DrawBox2D(renderCtx, nodeCenter, node.targetSize, true)
+    // DrawBox2D(renderCtx, nodeCenter, node.targetSize, true)
 
     if .DrawBackground in node.flags {
         color := node.bgColor

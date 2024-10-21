@@ -46,24 +46,12 @@ AssetData :: struct {
 
     handle: Handle,
 
-    descriptor: AssetDescriptor,
-
-    // Linked list
-    // @NOTE: 
-    // This is primarly for loading assets in asynchronous way,
-    // since you can't index map the easy way.
-    // So the question is, wouldn't be better to just have array of
-    // registered assets, and store them in map only after loading?
-    // prev: ^AssetData,
-    next: ^AssetData,
+    descriptor: AssetDescriptor
 }
 
 Assets :: struct {
     assetsMap: map[string]AssetData,
-
-    // firstAsset: ^AssetData,
-    // lastAsset: ^AssetData,
-    toLoad: [dynamic]^AssetData
+    toLoad: [dynamic]string
 }
 
 RegisterAsset :: proc(fileName: string, desc: AssetDescriptor) {
@@ -82,29 +70,7 @@ RegisterAssetCtx :: proc(assets: ^Assets, fileName: string, desc: AssetDescripto
         descriptor = desc,
     }
 
-    // add to linked list
-    assetPtr := &assets.assetsMap[clonedName]
-    append(&assets.toLoad, assetPtr)
-    // if assets.firstAsset == nil {
-    //     assets.firstAsset = assetPtr
-    //     assets.lastAsset = assetPtr
-    // }
-    // else {
-    //     // assetPtr.prev = assets.lastAsset
-
-    //     fmt.println("Prev:", assets.lastAsset.fileName, "Adding:", assetPtr.fileName)
-
-    //     assets.lastAsset.next = assetPtr
-    //     assets.lastAsset = assetPtr
-
-    //             a := platform.assets.firstAsset
-    //     for a != nil {
-    //         fmt.print(a.fileName)
-    //         fmt.print("->")
-    //         a = a.next
-    //     }
-    //     fmt.println()
-    // }
+    append(&assets.toLoad, clonedName)
 }
 
 GetAssetData :: proc(fileName: string) -> ^AssetData {

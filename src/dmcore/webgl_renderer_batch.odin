@@ -79,7 +79,7 @@ DrawBatch :: proc(ctx: ^RenderContext, batch: ^RectBatch) {
     
     oneOverAtlasSize := v2{1 / f32(tex.width), 1 / f32(tex.height)}
     // @TODO: get frame size from context
-    screenSize := v2{ 2. / 800., -2./600.}
+    screenSize := v2{ 2 / f32(ctx.frameSize.x), -2 / f32(ctx.frameSize.y)}
 
     gl.Uniform2fv(gl.GetUniformLocation(shader.backend.shaderID, "OneOverAtlasSize"), oneOverAtlasSize)
     gl.Uniform2fv(gl.GetUniformLocation(shader.backend.shaderID, "ScreenSize"), screenSize)

@@ -80,6 +80,25 @@ muiEndWindow :: proc(using mui: ^Mui) {
     mu.end_window(&muiCtx)
 }
 
+@(deferred_in_out=muiScopedHoverWindow)
+muiHoverWindow :: proc(mui: ^Mui, label: string, pos, size: iv2, 
+        options: mu.Options = {.NO_TITLE, .NO_RESIZE, .NO_INTERACT}) -> bool
+{
+    cnt := mu.get_container(&mui.muiCtx, label)
+
+    cnt.rect = {pos.x, pos.y, size.x, size.y}
+    cnt.open = true
+    mu.bring_to_front(&mui.muiCtx, cnt)
+
+    return muiBeginWindow(mui, label, cnt.rect, options)
+}
+
+muiScopedHoverWindow :: proc(mui: ^Mui, label: string, pos, size: iv2, options: mu.Options, ok: bool) {
+    if(ok) {        
+        muiEndWindow(mui)
+    }
+}
+
 muiPushID :: proc(mui: ^Mui, id: int) {
     mu.push_id(&mui.muiCtx, uintptr(id))
 }
@@ -117,7 +136,11 @@ muiSliderInt :: proc(using mui: ^Mui, value: ^int, low, high: int, step: int = 0
 }
 
 muiButton :: proc(mui:^Mui, label: string, icon: mu.Icon = .NONE, opt: mu.Options = {.ALIGN_CENTER}) -> bool {
-    return mu.button(&mui.muiCtx, label, icon, opt) == {.SUBMIT}
+    return .SUBMIT in  mu.button(&mui.muiCtx, label, icon, opt)
+}
+
+muiButtonEx:: proc(mui:^Mui, label: string, icon: mu.Icon = .NONE, opt: mu.Options = {.ALIGN_CENTER}) -> mu.Result_Set {
+    return mu.button(&mui.muiCtx, label, icon, opt)
 }
 
 muiToggle :: proc(using mui: ^Mui, label: string, state: ^bool) -> bool {
@@ -147,7 +170,7 @@ scoped_muPopup :: proc(mui: ^Mui, label: string, ok: bool) {
 
 muiIsCursorOverUI :: proc(mui: ^Mui, cursorPos: iv2) -> bool {
     for container in mui.muiCtx.containers {
-        if container.open {
+        if container.used_last_frame {
             left  := container.rect.x
             top   := container.rect.y
             right := container.rect.x + container.rect.w
@@ -362,7 +385,7 @@ test_window :: proc(using mui: ^Mui) {
 
     // NOTE(oskar): mu.button() returns Res_Bits and not bool (should fix this)
     button :: #force_inline proc(muiCtx: ^mu.Context, label: string) -> bool {
-        return mu.button(muiCtx, label) == {.SUBMIT}
+        return (.SUBMIT in mu.button(muiCtx, label))
     }
 
     /* do window */

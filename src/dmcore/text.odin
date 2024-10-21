@@ -7,6 +7,8 @@ import "core:unicode/utf8"
 
 import "core:encoding/base64"
 
+import "core:strings"
+
 import math "core:math/linalg/glsl"
 import coreMath "core:math"
 
@@ -73,12 +75,36 @@ KerningLookup :: proc(font: Font, a, b: rune) -> f32  {
     return font.kerningTable[key]
 }
 
-DrawTextCentered :: proc(ctx: ^RenderContext, str: string, font: Font, position: v2, fontSize: int = 0,
-    color := color{1, 1, 1, 1}) {
-    size := MeasureText(str, font, fontSize)
-    pos := position - size / 2
+DrawTextCentered :: proc(ctx: ^RenderContext, str: string, font: Font, position: v2, 
+    fontSize: int = 0,
+    color := color{1, 1, 1, 1})
+{
+    str := str
+    sizeY := MeasureText(str, font, fontSize).y
 
-    DrawText(ctx, str, font, pos, fontSize, color)
+    line := 0
+    for {
+        idx := strings.index_rune(str, '\n')
+        doContinue := true
+
+        if idx == -1 {
+            idx = len(str) - 1
+            doContinue = false
+        }
+
+        toDraw := str[:idx + 1]
+        size := MeasureText(toDraw, font, fontSize)
+        drawPos := v2{position.x - size.x / 2, position.y + f32(line) * font.lineHeight - sizeY / 2}
+
+        DrawText(ctx, toDraw, font, drawPos, fontSize, color)
+
+        line += 1
+        str = str[idx + 1:]
+
+        if doContinue == false {
+            break
+        }
+    }
 }
 
 DrawText :: proc(ctx: ^RenderContext, str: string, font: Font, position: v2, fontSize: int = 0,

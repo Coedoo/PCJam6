@@ -11,6 +11,7 @@ class FilesInterface {
                 
                 const req = new XMLHttpRequest();
                 req.open("GET", path);
+                // req.setRequestHeader("Cache-Control", "no-cache, no-store, max-age=0");
                 req.responseType = "arraybuffer";
 
                 let that = this;
@@ -22,7 +23,7 @@ class FilesInterface {
                     let src = new Uint8Array(arraybuffer)
                     let dest = new Uint8Array(that.wmi.memory.buffer, ptr, arraybuffer.byteLength);
 
-                    // console.log(req.response.byteLength)
+                    // console.log(e)
 
                     dest.set(src)
                     that.wmi.exports.DoFileCallback(ptr, arraybuffer.byteLength, callback, odin_ctx)

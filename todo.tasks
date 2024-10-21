@@ -1,22 +1,31 @@
+ ✔ Art: last building @done (24-10-20 12:02)
+ ✔ Tutorial Messages @done (24-10-20 12:25)
+ ☐ Levels: aim for 5-10 minutes of gameplay
+ ☐ Art: tiles
+ ☐ Check if everything works on Itch
+ ☐ Settings
+ ☐ Audio
+ ☐ Art: props
+ ☐ Program in props
+ ☐ Art: cleanup
 
 
- ✔ Belt sprites @done (24-10-13 22:30)
- ☐ Splitters/Merger
-   ☐ Fix Mergers
- ☐ Challanges
-   ☐ Tasks targets
-   ☐ Task time
-   ☐ handle task fail
+ ✔ Belt sprites @done (24-10-20 11:17)
+ ✔ Splitters/Merger @done (24-10-20 11:17)
+   ✔ Fix Mergers @done (24-10-20 11:15)
+ ✔ Challanges @done (24-10-20 11:15)
+   ✔ Tasks targets @done (24-10-16 22:56)
+   ✔ Task time @done (24-10-16 22:58)
+   ✔ handle task fail @done (24-10-16 22:58)
    ✔ dialogs @done (24-10-15 22:23)
-   ☐ finishing and moving to next level
-   ☐ scores and switch between levels?
+   ✔ finishing and moving to next level @done (24-10-16 22:58)
+   ✔ scores and switch between levels? @done (24-10-20 11:15)
 
- ☐ Make player collider smaller so it can look like she is in front a building
- ☐ Containers should have unlimited (?) storage and can store different types of items
+ ✔ Make player collider smaller so it can look like she is in front a building @done (24-10-18 21:47)
+ ✔ Containers should have unlimited (?) storage and can store different types of items @done (24-10-16 22:58)
 
 
- ☐ Tutorials
- ☐ game save
+ ✔ game save @done (24-10-20 11:15)
 
  ✔ Colored pipe directions / sprites @done (24-10-12 13:02)
  ✔ Building inputs @done (24-10-12 13:02)

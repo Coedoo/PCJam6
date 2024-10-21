@@ -22,7 +22,7 @@ assetsLoadingState: struct {
     loadedCount: int,
 
     finishedLoading: bool,
-    nowLoading: ^dm.AssetData,
+    nowLoading: string,
     loadingIndex: int,
 }
 
@@ -33,12 +33,13 @@ SetWindowSize :: proc(width, height: int) {
 FileLoadedCallback :: proc(data: []u8) {
     assert(data != nil)
 
-    asset := engineData.assets.toLoad[assetsLoadingState.loadingIndex]
+    assetName := engineData.assets.toLoad[assetsLoadingState.loadingIndex]
+    asset := &engineData.assets.assetsMap[assetName]
 
     switch desc in asset.descriptor {
     case dm.TextureAssetDescriptor:
         asset.handle = cast(dm.Handle) dm.LoadTextureFromMemoryCtx(engineData.renderCtx, data, desc.filter)
-        // delete(data)
+        delete(data)
 
     case dm.ShaderAssetDescriptor:
         str := strings.string_from_ptr(raw_data(data), len(data))
@@ -64,31 +65,31 @@ FileLoadedCallback :: proc(data: []u8) {
         assetsLoadingState.nowLoading = engineData.assets.toLoad[assetsLoadingState.loadingIndex]
     }
     else {
-        assetsLoadingState.nowLoading = nil
+        assetsLoadingState.nowLoading = ""
     }
 
     LoadNextAsset()
 }
 
 LoadNextAsset :: proc() {
-    if assetsLoadingState.nowLoading == nil {
+    if assetsLoadingState.nowLoading == "" {
         assetsLoadingState.finishedLoading = true
         fmt.println("Finished Loading Assets")
         return
     }
 
-    if assetsLoadingState.nowLoading.descriptor == nil {
-        assetsLoadingState.nowLoading = assetsLoadingState.nowLoading.next
-        assetsLoadingState.loadedCount += 1
+    // if assetsLoadingState.nowLoading.descriptor == nil {
+    //     assetsLoadingState.nowLoading = assetsLoadingState.nowLoading.next
+    //     assetsLoadingState.loadedCount += 1
 
-        fmt.println("Incorrect descriptor. Skipping")
-    }
+    //     fmt.println("Incorrect descriptor. Skipping")
+    // }
 
-    path := strings.concatenate({dm.ASSETS_ROOT, assetsLoadingState.nowLoading.fileName}, context.temp_allocator)
+    path := strings.concatenate({dm.ASSETS_ROOT, assetsLoadingState.nowLoading}, context.temp_allocator)
     LoadFile(path, FileLoadedCallback)
 
     fmt.println("[", assetsLoadingState.loadedCount + 1, "/", assetsLoadingState.maxCount, "]",
-                 " Loading asset: ", assetsLoadingState.nowLoading.fileName, sep = "")
+                 " Loading asset: ", assetsLoadingState.nowLoading, sep = "")
 }
 
 main :: proc() {
@@ -128,11 +129,30 @@ step :: proc (delta: f32) -> bool {
 
     @static gameLoaded: bool
     if assetsLoadingState.finishedLoading == false {
-        // if assetsLoadingState.nowLoading != nil {
-        //     dm.DrawTextCentered(engineData.renderCtx, fmt.tprint("Loading:", assetsLoadingState.nowLoading.fileName),
-        //         dm.LoadDefaultFont(engineData.renderCtx), dm.ToV2(engineData.renderCtx.frameSize) / 2)
-        //     dm.FlushCommands(engineData.renderCtx)
-        // }
+        if assetsLoadingState.nowLoading != "" {
+            dm.ClearColor({0.1, 0.1, 0.1, 1})
+
+            pos := dm.ToV2(engineData.renderCtx.frameSize)
+            pos.x /= 2
+            pos.y -= 80
+            dm.DrawTextCentered(
+                engineData.renderCtx, 
+                fmt.tprintf("Loading: %v [%v/%v]", assetsLoadingState.nowLoading, assetsLoadingState.loadedCount + 1, assetsLoadingState.maxCount),
+                dm.LoadDefaultFont(engineData.renderCtx), 
+                pos
+            )
+
+            pos.y += 40
+            dm.DrawTextCentered(
+                engineData.renderCtx,
+                "Made with #NoEngine",
+                dm.LoadDefaultFont(engineData.renderCtx), 
+                pos,
+                fontSize = 30,
+            )
+
+            dm.FlushCommands(engineData.renderCtx)
+        }
         return true
     }
     else if gameLoaded == false {
@@ -174,8 +194,12 @@ step :: proc (delta: f32) -> bool {
                 engineData.input.mouseCurr[btn] = .Up
 
             case .Mouse_Move: 
-                engineData.input.mousePos.x = i32(e.mouse.client.x)
-                engineData.input.mousePos.y = i32(e.mouse.client.y)
+                // fmt.println(e.mouse.offset)
+
+                canvasRect := js.get_bounding_client_rect("game_viewport")
+
+                engineData.input.mousePos.x = i32(e.mouse.client.x - i64(canvasRect.x))
+                engineData.input.mousePos.y = i32(e.mouse.client.y - i64(canvasRect.y))
 
                 engineData.input.mouseDelta.x = i32(e.mouse.movement.x)
                 engineData.input.mouseDelta.y = i32(e.mouse.movement.y)
@@ -190,6 +214,12 @@ step :: proc (delta: f32) -> bool {
                 c := string(e.key._code_buf[:e.key._code_len])
                 key := JsKeyToKey[c]
                 engineData.input.curr[key] = .Down
+
+            case .Wheel:
+                engineData.input.scroll  = -int(e.wheel.delta[1] / 100)
+                engineData.input.scrollX = int(e.wheel.delta[0] / 100)
+
+                // fmt.println(e.wheel)
         }
 
     }
@@ -201,7 +231,7 @@ step :: proc (delta: f32) -> bool {
     dm.muiProcessInput(engineData.mui, &engineData.input)
     dm.muiBegin(engineData.mui)
 
-    dm.UpdateStatePointer(&engineData)
+    // dm.UpdateStatePointer(&engineData)
     // dm.UIBegin(dm.uiCtx,
     //            int(engineData.renderCtx.frameSize.x),
     //            int(engineData.renderCtx.frameSize.y))

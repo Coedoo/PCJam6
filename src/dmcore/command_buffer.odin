@@ -147,11 +147,11 @@ DrawSpriteCtx :: proc(ctx: ^RenderContext, sprite: Sprite, position: v2,
     append(&ctx.commandBuffer.commands, cmd)
 }
 
-DrawBlankSprite :: proc(position: v2, size: v2, color := WHITE) {
-    DrawBlankSpriteCtx(renderCtx, position, size, color)
+DrawBlankSprite :: proc(position: v2, size: v2, color := WHITE, pivot := v2{0.5, 0.5}) {
+    DrawBlankSpriteCtx(renderCtx, position, size, color, pivot)
 }
 
-DrawBlankSpriteCtx :: proc(ctx: ^RenderContext, position: v2, size: v2, color := WHITE) {
+DrawBlankSpriteCtx :: proc(ctx: ^RenderContext, position: v2, size: v2, color := WHITE, pivot := v2{0.5, 0.5}) {
     cmd: DrawRectCommand
 
     texture := ctx.whiteTexture
@@ -161,7 +161,7 @@ DrawBlankSpriteCtx :: proc(ctx: ^RenderContext, position: v2, size: v2, color :=
     cmd.size = size
     cmd.texSource = {0, 0, texSize.x, texSize.y}
     cmd.tint = color
-    cmd.pivot = {0.5, 0.5}
+    cmd.pivot = pivot
 
     cmd.texture = texture
     cmd.shader =  ctx.defaultShaders[.Sprite]
