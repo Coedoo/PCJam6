@@ -151,6 +151,7 @@ PlaceSplitter :: proc(tile: ^Tile) {
     }
 
     tile.beltDir = {}
+    tile.merger = nil
 
     tile.splitter = splitter
     dirVec := DirToVec[splitter.nextOut]
@@ -188,6 +189,7 @@ PlaceMerger :: proc(tile: ^Tile) {
     }
 
     tile.beltDir = {}
+    tile.splitter = nil
 
     neighbors := GetNeighbourTiles(tile.gridPos, context.temp_allocator)
     for neighbor in neighbors {
@@ -195,11 +197,25 @@ PlaceMerger :: proc(tile: ^Tile) {
         if neighbor.gridPos + dir == tile.gridPos {
             neighbor.nextTile = tile.gridPos
         }
+
+        if otherMerger, ok := neighbor.merger.?; ok {
+            if merger.outDir != ReverseDir[otherMerger.outDir] {
+                neighbor.nextTile = tile.gridPos
+            }
+        }
     }
 
     next := GetTileAtCoord(tile.gridPos + DirToVec[merger.outDir])
-    if next != nil && ReverseDir[next.beltDir.from] == merger.outDir {
-        tile.nextTile = next.gridPos
+    if next != nil {
+        if ReverseDir[next.beltDir.from] == merger.outDir {
+            tile.nextTile = next.gridPos
+        }
+
+        if otherMerger, ok := next.merger.?; ok {
+            if merger.outDir != ReverseDir[otherMerger.outDir] {
+                tile.nextTile = next.gridPos
+            }
+        }
     }
 
     tile.merger = merger
@@ -208,8 +224,12 @@ PlaceMerger :: proc(tile: ^Tile) {
 DestroyMerger :: proc(tile: ^Tile) {
     neighbors := GetNeighbourTiles(tile.gridPos, context.temp_allocator)
     for neighbor in neighbors {
-        dir := DirToVec[neighbor.beltDir.to]
-        if neighbor.gridPos + dir == tile.gridPos {
+        // dir := DirToVec[neighbor.beltDir.to]
+        // if neighbor.gridPos + dir == tile.gridPos {
+        //     neighbor.nextTile = nil
+        // }
+
+        if neighbor.nextTile == tile.gridPos {
             neighbor.nextTile = nil
         }
     }

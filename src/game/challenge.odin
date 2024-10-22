@@ -45,7 +45,7 @@ Challenges := [?]Challange{
             },
             {
                 imageName = ImageNotLikeThis,
-                message = "I would go to shop but I don't want to leave my home,\nand there we be a lot of people everywhere",
+                message = "I would go to shop but I don't want to leave my home,\nand there will be a lot of people everywhere",
             },
             {
                 imageName = ImageThinking,
@@ -71,7 +71,7 @@ Challenges := [?]Challange{
         name = "More candies",
         time = 10,
         items = {{.Candy, 10}, {.StarCandy, 5}},
-        money = 800,
+        money = 900,
 
         messages = {
             {
@@ -95,8 +95,8 @@ Challenges := [?]Challange{
     {
         name = "Chocolate",
         time = 10,
-        items = {{.Candy, 10}, {.StarCandy, 10}, {.Chocolate, 5}},
-        money = 1000,
+        items = {{.Candy, 15}, {.StarCandy, 5}, {.Chocolate, 5}},
+        money = 1200,
 
         messages = {
             {
@@ -116,7 +116,7 @@ Challenges := [?]Challange{
         name = "Cookies",
         time = 10,
         items = {{.Candy, 10}, {.StarCandy, 10}, {.Chocolate, 10}, {.Cookie, 5}},
-        money = 1400,
+        money = 1600,
 
         messages = {
             {
@@ -153,7 +153,7 @@ Challenges := [?]Challange{
         name = "Phase Coffee",
         time = 10,
         items = {{.Candy, 10}, {.StarCandy, 10}, {.Chocolate, 10}, {.Cookie, 5}, {.PhaseCoffee, 5}},
-        money = 2000,
+        money = 2200,
 
         messages = {
             {
@@ -188,7 +188,7 @@ FinalMessage := [?]Message {
 
     {
         imageName = ImageNotLikeThis,
-        message = "Maybe I can optimze it even more?!",
+        message = "Maybe I can optimize it even more?!",
     },
 
     {

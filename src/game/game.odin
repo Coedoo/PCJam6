@@ -518,7 +518,7 @@ BuildingModeUpdate :: proc() {
             gameState.beltBuildMode = .Merger
         }
 
-        if dm.GetMouseButton(.Middle) == .JustPressed {
+        if dm.GetMouseButton(.Middle) == .JustPressed || dm.GetKeyState(.Q) == .JustPressed {
             newDir := BeltDir {
                 from = gameState.buildingBeltDir.to,
                 to   = gameState.buildingBeltDir.from,
@@ -604,7 +604,7 @@ BuildingModeUpdate :: proc() {
                 }
                 if .HOVER in res {
                     mousePos := dm.input.mousePos + {5, 5}
-                    if dm.muiHoverWindow(dm.mui, b.name, mousePos, {220, 200}) {
+                    if dm.muiHoverWindow(dm.mui, b.name, mousePos, {220, 260}) {
                         dm.muiLabel(dm.mui, b.name)
 
                         if b.producedItem != .None {
@@ -664,7 +664,8 @@ Right Mouse - Cancel
 Controls:
 Left Mouse - Place belt
 Scroll - Rotate
-Middle Mouse - Reverse direction
+Middle Mouse or Q - 
+    Reverse direction
 Right Mouse - Cancel
 `
                       )
@@ -680,6 +681,8 @@ StartValidation :: proc() {
     gameState.validationTimer = 0
 
     gameState.validationResult = {}
+
+    gameState.buildUpMode = .None
 
     viewBounds := dm.Bounds2D{
         max(f32), min(f32),
@@ -709,6 +712,16 @@ StartValidation :: proc() {
 
     boundsCenter := dm.BoundsCenter(viewBounds)
     camPos := boundsCenter == {0, 0} ? gameState.playerPosition : boundsCenter
+
+    camWidth = camSize
+    camHeight = camSize / camAspect
+    levelSize := v2{
+        f32(gameState.level.sizeX),
+        f32(gameState.level.sizeY),
+    }
+
+    camPos.x = clamp(camPos.x, camWidth + 1.75,  levelSize.x - camWidth - 1.25)
+    camPos.y = clamp(camPos.y, camHeight + 1.75, levelSize.y - camHeight - 1.25)
 
     dm.renderCtx.camera.position.xy = cast([2]f32) camPos
     dm.renderCtx.camera.orthoSize = camSize
@@ -1009,7 +1022,7 @@ GameUpdateDebug : dm.GameUpdateDebug : proc(state: rawptr, debug: bool) {
 @(export)
 GameRender : dm.GameRender : proc(state: rawptr) {
     gameState = cast(^GameState) state
-    dm.ClearColor({0.1, 0.1, 0.3, 1})
+    dm.ClearColor({0.0/255.0, 24.0/255.0, 4.0/255.0, 1})
 
     // Level
     for tile, idx in gameState.level.grid {
@@ -1055,7 +1068,7 @@ GameRender : dm.GameRender : proc(state: rawptr) {
         if next, ok := tile.nextTile.?; ok {
             posA := tile.worldPos
             posB := CoordToPos(next)
-            // dm.DrawLine(dm.renderCtx, posA, posB, false, dm.BLUE)
+            dm.DrawLine(dm.renderCtx, posA, posB, false, dm.BLUE)
         }
     }
 

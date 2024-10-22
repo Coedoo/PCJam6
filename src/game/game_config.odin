@@ -15,14 +15,14 @@ BUILDING_DISTANCE :: 7
 PRODUCTION_BASE :: 1
 
 ITEM_SIZE :: 0.7
-ITEM_SPEED :: 20
+ITEM_SPEED :: 10
 
 MAX_INPUTS :: 3
 INPUT_MAX_ITEMS :: 10
 
 START_LEVEL :: "Level_0"
 
-START_CHALLENGE :: 0
+START_CHALLENGE :: 4
 
 // DEBUG
 DEBUG_TILE_OVERLAY := false
@@ -36,8 +36,8 @@ Recipes := [Item]ItemRecipe {
     .Chocolate = {{.Sugar, 5}},
     .Candy = {{.Sugar, 5}},
 
-    .StarCandy = {{.Sugar, 4}, {.Candy, 1}},
-    .Cookie = {{.Chocolate, 5}, {.Flour, 2}},
+    .StarCandy = {{.Sugar, 2}, {.Candy, 1}},
+    .Cookie = {{.Chocolate, 3}, {.Flour, 2}},
     .PhaseCoffee = {{.CoffeeBean, 4}, {.Sugar, 4}},
 }
 
@@ -86,7 +86,7 @@ Buildings := [?]Building {
         spriteName = "buildings.png",
         spriteRect = {48, 0, 48, 48},
 
-        description = "Transforms sugar to its ultimate form.",
+        description = "Transforms sugar into its ultimate form.",
 
         size = {3, 3},
 
@@ -110,7 +110,7 @@ Buildings := [?]Building {
         spriteName = "buildings.png",
         spriteRect = {0, 48, 64, 64},
 
-        description = "Apparently the candy was created the star Gliese 667C. The marketing team couldn't know that she was gonna collapse into Black Hole just year later.",
+        description = "Apparently the candy was created after the first observation of the  star Gliese 667C. The marketing team couldn't know that she was gonna collapse into a Black Hole just year a later.",
 
         size = {4, 4},
 
@@ -168,7 +168,7 @@ Buildings := [?]Building {
 
         maxStorage = 20,
         producedItem= .Flour,
-        productionRate = 5,
+        productionRate = 4,
 
         unlockedAfterLevel = 3,
 
@@ -229,7 +229,7 @@ Buildings := [?]Building {
         spriteName = "buildings.png",
         spriteRect = {0, 48, 64, 64},
 
-        description = "The original Jelly Hoshiumi of Phase Connect, generation ?, Phase Invaders. Availble now at shop.phase-connect.com",
+        description = "The original Jelly Hoshiumi of Phase Connect, generation ?, Phase Invaders. Availble now at shop.phase-connect.com\nServed only with sugar because I didn't want to add another item.",
 
         size = {4, 4},
 
